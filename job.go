@@ -3,6 +3,8 @@ package jobworker
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const defaultJobTimeout = time.Second * 10
@@ -18,16 +20,29 @@ const (
 
 type Job struct {
 	state    jobState
-	timeout  time.Duration
 	business business
+	timeout  time.Duration
+	name     string
 }
 
 type business func(context.Context) error
 
-func NewJob(b business) *Job {
-	return &Job{
+func NewJob(b business, opts ...JobOption) *Job {
+	j := &Job{
 		state:    StateNew,
 		business: b,
-		timeout:  defaultJobTimeout,
 	}
+
+	for _, opt := range opts {
+		opt(j)
+	}
+
+	if j.timeout == 0 {
+		j.timeout = defaultJobTimeout
+	}
+	if j.name == `` {
+		j.name = uuid.NewString()
+	}
+
+	return j
 }

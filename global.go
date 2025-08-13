@@ -30,3 +30,9 @@ func JobWithTimeout(timeout time.Duration) JobOption {
 		j.timeout = timeout
 	}
 }
+
+func JobWithName(name string) JobOption {
+	return func(j *Job) {
+		j.name = name
+	}
+}

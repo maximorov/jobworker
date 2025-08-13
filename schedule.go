@@ -15,9 +15,9 @@ type ScheduledJob struct {
 	schedule scheduled
 }
 
-func NewScheduledJob(b business, every time.Duration) *ScheduledJob {
+func NewScheduledJob(b business, every time.Duration, opts ...JobOption) *ScheduledJob {
 	return &ScheduledJob{
-		Job: NewJob(b),
+		Job: NewJob(b, opts...),
 		schedule: scheduled{
 			every:    every,
 			nextTime: apptime.Now().Add(every),

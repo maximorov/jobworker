@@ -42,5 +42,7 @@ func (w *Worker) performJob(ctx context.Context, j *Job) error {
 	jCtx, cancel := context.WithTimeout(ctx, j.timeout)
 	defer func() { cancel() }()
 
+	log.Debugf(`JOB <%s> if performing`, j.name)
+
 	return j.business(jCtx)
 }

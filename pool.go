@@ -73,15 +73,13 @@ func (p *Pool) QueueJob(j *Job) {
 		return
 	}
 
+	log.Debugf(`JOB <%s> is queued`, j.name)
+
 	p.waitingJobs <- j
 }
 
-func (p *Pool) ScheduleJob(j *ScheduledJob, opts ...JobOption) {
+func (p *Pool) ScheduleJob(j *ScheduledJob) {
 	j.state = StateNew
-
-	for _, opt := range opts {
-		opt(j.Job)
-	}
 
 	p.scheduledMu.Lock()
 	defer p.scheduledMu.Unlock()
