@@ -3,7 +3,7 @@ package jobworker
 import (
 	"time"
 
-	"github.com/Cery-Tech/equipment-backend/pkg/apptime"
+	"github.com/Cery-Tech/utils/apptime"
 )
 
 type scheduled struct {
