@@ -11,10 +11,8 @@ func NewAfter() *After {
 	}
 }
 
-func (o *After) Count() chan bool {
-	o.counter++
-
-	return o.success
+func (o *After) Queue(b business, opts ...JobOption) {
+	QueueJobIf(NewJob(b, opts...), o.success)
 }
 
 func (o *After) Notify(err error) {
