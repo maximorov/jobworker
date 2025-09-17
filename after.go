@@ -12,6 +12,7 @@ func NewAfter() *After {
 }
 
 func (o *After) Queue(b business, opts ...JobOption) {
+	o.counter++
 	QueueJobIf(NewJob(b, opts...), o.success)
 }
 
