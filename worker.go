@@ -6,6 +6,10 @@ import (
 	"github.com/Cery-Tech/log"
 )
 
+type InternalErrorHolder interface {
+	GetInternal() error
+}
+
 type Worker struct {
 	id       int
 	jobs     chan *Job
@@ -29,7 +33,11 @@ func (w *Worker) Listen(ctx context.Context) {
 		case job := <-w.jobs:
 			err := w.performJob(ctx, job)
 			if err != nil {
-				log.Errorf("Failed to perform job: %s", err)
+				if iErr, ok := err.(InternalErrorHolder); ok {
+					log.Errorf("Failed to perform job: %s: %s", err, iErr.GetInternal())
+				} else {
+					log.Errorf("Failed to perform job: %s", err)
+				}
 			}
 		}
 	}
