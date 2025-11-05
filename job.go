@@ -46,3 +46,7 @@ func NewJob(b business, opts ...JobOption) *Job {
 
 	return j
 }
+
+func (j *Job) couldBeProcessed() bool {
+	return j.state == StateNew || j.state == StateProcessed
+}

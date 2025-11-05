@@ -3,36 +3,73 @@ package jobworker
 import (
 	"time"
 
-	"github.com/Cery-Tech/utils/apptime"
+	"github.com/Cery-Tech/log"
+	"github.com/robfig/cron/v3"
 )
 
-type scheduled struct {
+type scheduled interface {
+	isItTime() bool
+	queueItForLater()
+}
+
+type scheduledEvery struct {
+	now      func() time.Time
 	every    time.Duration
 	nextTime time.Time
 }
+
+func (j *scheduledEvery) isItTime() bool {
+	return j.nextTime.Before(j.now())
+}
+
+func (j *scheduledEvery) queueItForLater() {
+	j.nextTime = j.now().Add(j.every)
+}
+
+type scheduledCron struct {
+	now      func() time.Time
+	schedule cron.Schedule
+	nextTime time.Time
+}
+
+func (j *scheduledCron) isItTime() bool {
+	return j.nextTime.Before(j.now())
+}
+
+func (j *scheduledCron) queueItForLater() {
+	j.nextTime = j.schedule.Next(j.now())
+}
+
 type ScheduledJob struct {
+	scheduled
 	*Job
-	schedule scheduled
 }
 
 func NewScheduledJob(b business, every time.Duration, opts ...JobOption) *ScheduledJob {
 	return &ScheduledJob{
-		Job: NewJob(b, opts...),
-		schedule: scheduled{
+		&scheduledEvery{
+			now:      time.Now,
 			every:    every,
-			nextTime: apptime.Now().Add(every),
+			nextTime: time.Now().Add(every),
 		},
+		NewJob(b, opts...),
 	}
 }
 
-func (j *ScheduledJob) isItTime() bool {
-	return j.schedule.nextTime.Before(apptime.Now())
-}
+func NewScheduledCronJob(b business, pattern string, opts ...JobOption) *ScheduledJob {
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	schedule, err := parser.Parse(pattern)
+	if err != nil || schedule == nil {
+		log.Panicf(`cron pattern "%s" is not a valid cron expression: %v`, pattern, err)
+		return nil
+	}
 
-func (j *ScheduledJob) couldBeProcessed() bool {
-	return j.Job.state == StateNew || j.Job.state == StateProcessed
-}
-
-func (j *ScheduledJob) queueItForLater() {
-	j.schedule.nextTime = apptime.Now().Add(j.schedule.every)
+	return &ScheduledJob{
+		&scheduledCron{
+			now:      time.Now,
+			schedule: schedule,
+			nextTime: schedule.Next(time.Now()),
+		},
+		NewJob(b, opts...),
+	}
 }
