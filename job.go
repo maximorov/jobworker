@@ -2,6 +2,7 @@ package jobworker
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,7 +26,7 @@ type Job struct {
 	name     string
 }
 
-type business func(context.Context) (string, error)
+type business func(context.Context) (fmt.Stringer, error)
 
 func NewJob(b business, opts ...JobOption) *Job {
 	j := &Job{

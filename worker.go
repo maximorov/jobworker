@@ -2,6 +2,7 @@ package jobworker
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Cery-Tech/log"
 )
@@ -31,15 +32,15 @@ func (w *Worker) Listen(ctx context.Context) {
 			w.finished <- struct{}{}
 			return
 		case job := <-w.jobs:
-			if msg, err := w.performJob(ctx, job); err != nil {
+			if res, err := w.performJob(ctx, job); err != nil {
 				if iErr, ok := err.(InternalErrorHolder); ok {
 					log.Errorf(`JOB <%s> failed: %s: %s`, err, iErr.GetInternal())
 				} else {
 					log.Errorf(`JOB <%s> failed: %s`, err)
 				}
 			} else {
-				if msg != `` {
-					log.Debugf(`JOB <%s> completed successfully: %s`, msg)
+				if res != nil {
+					log.Debugf(`JOB <%s> completed successfully: %s`, res)
 				} else {
 					log.Debugf(`JOB <%s> completed successfully`)
 				}
@@ -48,7 +49,7 @@ func (w *Worker) Listen(ctx context.Context) {
 	}
 }
 
-func (w *Worker) performJob(ctx context.Context, j *Job) (string, error) {
+func (w *Worker) performJob(ctx context.Context, j *Job) (fmt.Stringer, error) {
 	j.state = StateProcessing
 	defer func() { j.state = StateProcessed }()
 
