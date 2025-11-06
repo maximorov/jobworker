@@ -31,19 +31,24 @@ func (w *Worker) Listen(ctx context.Context) {
 			w.finished <- struct{}{}
 			return
 		case job := <-w.jobs:
-			err := w.performJob(ctx, job)
-			if err != nil {
+			if msg, err := w.performJob(ctx, job); err != nil {
 				if iErr, ok := err.(InternalErrorHolder); ok {
-					log.Errorf("Failed to perform job: %s: %s", err, iErr.GetInternal())
+					log.Errorf(`JOB <%s> failed: %s: %s`, err, iErr.GetInternal())
 				} else {
-					log.Errorf("Failed to perform job: %s", err)
+					log.Errorf(`JOB <%s> failed: %s`, err)
+				}
+			} else {
+				if msg != `` {
+					log.Debugf(`JOB <%s> completed successfully: %s`, msg)
+				} else {
+					log.Debugf(`JOB <%s> completed successfully`)
 				}
 			}
 		}
 	}
 }
 
-func (w *Worker) performJob(ctx context.Context, j *Job) error {
+func (w *Worker) performJob(ctx context.Context, j *Job) (string, error) {
 	j.state = StateProcessing
 	defer func() { j.state = StateProcessed }()
 

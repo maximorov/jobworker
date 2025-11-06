@@ -25,7 +25,7 @@ type Job struct {
 	name     string
 }
 
-type business func(context.Context) error
+type business func(context.Context) (string, error)
 
 func NewJob(b business, opts ...JobOption) *Job {
 	j := &Job{
