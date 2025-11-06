@@ -40,9 +40,9 @@ func (w *Worker) Listen(ctx context.Context) {
 				}
 			} else {
 				if res != nil {
-					log.Debugf(`JOB <%s> completed successfully: %s`, res)
+					log.Debugf(`JOB <%s> completed successfully: %s`, job.name, res)
 				} else {
-					log.Debugf(`JOB <%s> completed successfully`)
+					log.Debugf(`JOB <%s> completed successfully`, job.name)
 				}
 			}
 		}
