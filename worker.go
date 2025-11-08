@@ -34,9 +34,9 @@ func (w *Worker) Listen(ctx context.Context) {
 		case job := <-w.jobs:
 			if res, err := w.performJob(ctx, job); err != nil {
 				if iErr, ok := err.(InternalErrorHolder); ok {
-					log.Errorf(`JOB <%s> failed: %s: %s`, err, iErr.GetInternal())
+					log.Errorf(`JOB <%s> failed: %s: %s`, job.name, err, iErr.GetInternal())
 				} else {
-					log.Errorf(`JOB <%s> failed: %s`, err)
+					log.Errorf(`JOB <%s> failed: %s`, job.name, err)
 				}
 			} else {
 				if res != nil {
