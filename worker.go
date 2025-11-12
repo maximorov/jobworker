@@ -7,16 +7,19 @@ import (
 	"github.com/Cery-Tech/log"
 )
 
+// InternalErrorHolder is an interface for errors that contain an internal error.
 type InternalErrorHolder interface {
 	GetInternal() error
 }
 
+// Worker is responsible for executing jobs.
 type Worker struct {
 	id       int
 	jobs     chan *Job
 	finished chan struct{}
 }
 
+// NewWorker creates a new worker.
 func NewWorker(id int, jobs chan *Job, finished chan struct{}) Worker {
 	return Worker{
 		id:       id,
@@ -25,6 +28,8 @@ func NewWorker(id int, jobs chan *Job, finished chan struct{}) Worker {
 	}
 }
 
+// Listen starts the worker, which listens for jobs on the jobs channel.
+// It will stop when the context is canceled.
 func (w *Worker) Listen(ctx context.Context) {
 	for {
 		select {

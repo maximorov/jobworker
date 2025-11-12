@@ -12,6 +12,7 @@ import (
 const queueSize = 10
 const checkScheduledJobsInterval = 5 * time.Second
 
+// Pool manages a collection of workers and a queue of jobs to be processed.
 type Pool struct {
 	workers        []Worker
 	waitingJobs    chan *Job
@@ -22,6 +23,7 @@ type Pool struct {
 	stopped *atomic.Bool
 }
 
+// NewPool creates a new worker pool with the specified number of workers.
 func NewPool(workersNum int) *Pool {
 	res := &Pool{
 		workers:        make([]Worker, workersNum),
@@ -37,10 +39,13 @@ func NewPool(workersNum int) *Pool {
 	return res
 }
 
+// InitGlobalPool sets the current pool as the global pool.
 func (p *Pool) InitGlobalPool() {
 	pool = p
 }
 
+// Listen starts the worker pool and begins processing jobs.
+// It also starts a ticker to check for scheduled jobs.
 func (p *Pool) Listen(ctx context.Context) error {
 	for i := range p.workers {
 		go p.workers[i].Listen(ctx)
@@ -65,6 +70,7 @@ func (p *Pool) Listen(ctx context.Context) error {
 	return nil
 }
 
+// QueueJob adds a job to the waiting queue to be processed by a worker.
 func (p *Pool) QueueJob(j *Job) {
 	j.state = StateWaiting
 
@@ -78,6 +84,7 @@ func (p *Pool) QueueJob(j *Job) {
 	p.waitingJobs <- j
 }
 
+// ScheduleJob adds a scheduled job to the pool.
 func (p *Pool) ScheduleJob(j *ScheduledJob) {
 	j.state = StateNew
 
@@ -101,6 +108,7 @@ func (p *Pool) queueScheduledJobs() {
 	}
 }
 
+// Shutdown gracefully stops the worker pool, waiting for all workers to finish their current jobs.
 func (p *Pool) Shutdown() error {
 	p.stopped.Store(true)
 	close(p.waitingJobs)
