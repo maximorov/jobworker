@@ -78,8 +78,12 @@ func TestWorker_PerformJob_Error(t *testing.T) {
 func TestWorker_PerformJob_Timeout(t *testing.T) {
 	worker := Worker{}
 	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
-		time.Sleep(200 * time.Millisecond) // This will take longer than the timeout
-		return nil, nil
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+			return nil, nil
+		}
 	}, JobWithTimeout(50*time.Millisecond))
 
 	_, err := worker.performJob(context.Background(), job)
@@ -87,4 +91,74 @@ func TestWorker_PerformJob_Timeout(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, context.DeadlineExceeded, err)
 	assert.Equal(t, StateProcessed, job.state)
+}
+
+// internalError implements InternalErrorHolder interface for testing
+type internalError struct {
+	msg      string
+	internal error
+}
+
+func (e *internalError) Error() string {
+	return e.msg
+}
+
+func (e *internalError) GetInternal() error {
+	return e.internal
+}
+
+// TestWorker_PerformJob_InternalError tests a job that returns an error with internal error.
+func TestWorker_PerformJob_InternalError(t *testing.T) {
+	worker := Worker{}
+	internalErr := errors.New("database connection failed")
+	jobErr := &internalError{
+		msg:      "job failed",
+		internal: internalErr,
+	}
+
+	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		return nil, jobErr
+	})
+
+	res, err := worker.performJob(context.Background(), job)
+
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Equal(t, StateProcessed, job.state)
+
+	iErr, ok := err.(InternalErrorHolder)
+	assert.True(t, ok, "Error should implement InternalErrorHolder")
+	assert.Equal(t, internalErr, iErr.GetInternal())
+}
+
+// TestNewWorker tests the creation of a new Worker.
+func TestNewWorker(t *testing.T) {
+	jobs := make(chan *Job, 1)
+	finished := make(chan struct{}, 1)
+
+	worker := NewWorker(42, jobs, finished)
+
+	assert.Equal(t, 42, worker.id)
+	assert.Equal(t, jobs, worker.jobs)
+	assert.Equal(t, finished, worker.finished)
+}
+
+// TestWorker_Listen_ContextCancel tests that worker stops when context is canceled.
+func TestWorker_Listen_ContextCancel(t *testing.T) {
+	jobs := make(chan *Job, 1)
+	finished := make(chan struct{}, 1)
+	worker := NewWorker(1, jobs, finished)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go worker.Listen(ctx)
+
+	cancel()
+
+	select {
+	case <-finished:
+		// Worker finished as expected
+	case <-time.After(time.Second):
+		t.Fatal("Worker did not finish after context cancel")
+	}
 }

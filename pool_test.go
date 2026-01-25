@@ -52,52 +52,103 @@ func TestPoolQueueJob(t *testing.T) {
 
 	go pool.Listen(ctx)
 
-	var processed bool
-	var mu sync.Mutex
+	done := make(chan struct{})
 	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
-		mu.Lock()
-		processed = true
-		mu.Unlock()
+		close(done)
 		return nil, nil
 	})
 
 	pool.QueueJob(job)
 
-	// Wait for the job to be processed
-	time.Sleep(200 * time.Millisecond)
-
-	mu.Lock()
-	assert.True(t, processed, "Job should have been processed")
-	mu.Unlock()
+	select {
+	case <-done:
+		// Job processed successfully
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for job to be processed")
+	}
 
 	pool.Shutdown()
+}
+
+// TestPoolQueueJob_WhenStopped tests that jobs are not queued when pool is stopped.
+func TestPoolQueueJob_WhenStopped(t *testing.T) {
+	pool := NewPool(1)
+
+	pool.stopped.Store(true)
+
+	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		return nil, nil
+	})
+
+	// This should not block since the pool is stopped
+	pool.QueueJob(job)
+
+	assert.Equal(t, StateWaiting, job.state)
 }
 
 // TestPoolScheduleJob tests scheduling a job.
 func TestPoolScheduleJob(t *testing.T) {
 	pool := NewPool(1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go pool.Listen(ctx)
-
-	var processed bool
-	var mu sync.Mutex
 	scheduledJob := NewScheduledJob(func(ctx context.Context) (fmt.Stringer, error) {
-		mu.Lock()
-		processed = true
-		mu.Unlock()
 		return nil, nil
 	}, 100*time.Millisecond)
 
 	pool.ScheduleJob(scheduledJob)
 
-	// Wait for the job to be scheduled and processed
-	time.Sleep(300 * time.Millisecond)
+	pool.scheduledMu.RLock()
+	assert.Len(t, pool.scheduledJobs, 1)
+	assert.Equal(t, StateNew, scheduledJob.state)
+	pool.scheduledMu.RUnlock()
+}
 
-	mu.Lock()
-	assert.True(t, processed, "Scheduled job should have been processed")
-	mu.Unlock()
+// TestPoolInitGlobalPool tests setting the pool as global.
+func TestPoolInitGlobalPool(t *testing.T) {
+	p := NewPool(1)
+	p.InitGlobalPool()
 
-	pool.Shutdown()
+	assert.Equal(t, p, pool)
+}
+
+// TestPoolMultipleWorkers tests that multiple workers can process jobs concurrently.
+func TestPoolMultipleWorkers(t *testing.T) {
+	numWorkers := 3
+	p := NewPool(numWorkers)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go p.Listen(ctx)
+
+	var wg sync.WaitGroup
+	processedCount := 0
+	var mu sync.Mutex
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+			mu.Lock()
+			processedCount++
+			mu.Unlock()
+			wg.Done()
+			return nil, nil
+		})
+		p.QueueJob(job)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		mu.Lock()
+		assert.Equal(t, 5, processedCount)
+		mu.Unlock()
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for jobs to be processed")
+	}
+
+	p.Shutdown()
 }

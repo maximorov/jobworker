@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Cery-Tech/log"
+	"github.com/Cery-Tech/log/v2"
 	"go.uber.org/atomic"
 )
 
@@ -75,11 +75,11 @@ func (p *Pool) QueueJob(j *Job) {
 	j.state = StateWaiting
 
 	if p.stopped.Load() {
-		log.Infof(`Jobs worker pool is stopped.`)
+		log.Info("jobs worker pool is stopped")
 		return
 	}
 
-	log.Debugf(`JOB <%s> is queued`, j.name)
+	log.Debug("job is queued", log.String("job", j.name))
 
 	p.waitingJobs <- j
 }

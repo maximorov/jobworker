@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Cery-Tech/log"
+	"github.com/Cery-Tech/log/v2"
 )
 
 // InternalErrorHolder is an interface for errors that contain an internal error.
@@ -36,18 +36,25 @@ func (w *Worker) Listen(ctx context.Context) {
 		case <-ctx.Done():
 			w.finished <- struct{}{}
 			return
-		case job := <-w.jobs:
+		case job, ok := <-w.jobs:
+			if !ok {
+				w.finished <- struct{}{}
+				return
+			}
+			if job == nil {
+				continue
+			}
 			if res, err := w.performJob(ctx, job); err != nil {
 				if iErr, ok := err.(InternalErrorHolder); ok {
-					log.Errorf(`JOB <%s> failed: %s: %s`, job.name, err, iErr.GetInternal())
+					log.Error("job failed", err, log.String("job", job.name), log.String("internal", iErr.GetInternal().Error()))
 				} else {
-					log.Errorf(`JOB <%s> failed: %s`, job.name, err)
+					log.Error("job failed", err, log.String("job", job.name))
 				}
 			} else {
 				if res != nil {
-					log.Debugf(`JOB <%s> completed successfully: %s`, job.name, res)
+					log.Debug("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
 				} else {
-					log.Debugf(`JOB <%s> completed successfully`, job.name)
+					log.Debug("job completed successfully", log.String("job", job.name))
 				}
 			}
 		}
@@ -61,7 +68,7 @@ func (w *Worker) performJob(ctx context.Context, j *Job) (fmt.Stringer, error) {
 	jCtx, cancel := context.WithTimeout(ctx, j.timeout)
 	defer func() { cancel() }()
 
-	log.Debugf(`JOB <%s> is performing`, j.name)
+	log.Debug("job is performing", log.String("job", j.name))
 
 	return j.business(jCtx)
 }

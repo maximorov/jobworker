@@ -3,7 +3,7 @@ package jobworker
 import (
 	"time"
 
-	"github.com/Cery-Tech/log"
+	"github.com/Cery-Tech/log/v2"
 	"github.com/robfig/cron/v3"
 )
 
@@ -63,7 +63,7 @@ func NewScheduledCronJob(b business, pattern string, opts ...JobOption) *Schedul
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	schedule, err := parser.Parse(pattern)
 	if err != nil || schedule == nil {
-		log.Panicf(`cron pattern "%s" is not a valid cron expression: %v`, pattern, err)
+		log.Fatal("invalid cron expression", err, log.String("pattern", pattern))
 		return nil
 	}
 
