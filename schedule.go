@@ -47,7 +47,7 @@ type ScheduledJob struct {
 }
 
 // NewScheduledJob creates a new job that runs at a specified interval.
-func NewScheduledJob(b business, every time.Duration, opts ...JobOption) *ScheduledJob {
+func NewScheduledJob(b Business, every time.Duration, opts ...JobOption) *ScheduledJob {
 	return &ScheduledJob{
 		&scheduledEvery{
 			now:      time.Now,
@@ -59,7 +59,7 @@ func NewScheduledJob(b business, every time.Duration, opts ...JobOption) *Schedu
 }
 
 // NewScheduledCronJob creates a new job that runs based on a cron expression.
-func NewScheduledCronJob(b business, pattern string, opts ...JobOption) *ScheduledJob {
+func NewScheduledCronJob(b Business, pattern string, opts ...JobOption) *ScheduledJob {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	schedule, err := parser.Parse(pattern)
 	if err != nil || schedule == nil {

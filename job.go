@@ -22,16 +22,16 @@ const (
 // Job represents a unit of work to be executed by a worker.
 type Job struct {
 	state    jobState
-	business business
+	business Business
 	timeout  time.Duration
 	name     string
 }
 
-type business func(context.Context) (fmt.Stringer, error)
+type Business func(context.Context) (fmt.Stringer, error)
 
-// NewJob creates a new Job with the given business logic and options.
+// NewJob creates a new Job with the given Business logic and options.
 // By default, it has a timeout of 10 seconds and a random name.
-func NewJob(b business, opts ...JobOption) *Job {
+func NewJob(b Business, opts ...JobOption) *Job {
 	j := &Job{
 		state:    StateNew,
 		business: b,

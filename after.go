@@ -15,7 +15,7 @@ func NewAfter() *After {
 }
 
 // Queue adds a job to be executed if the condition is met.
-func (o *After) Queue(b business, opts ...JobOption) {
+func (o *After) Queue(b Business, opts ...JobOption) {
 	o.counter++
 	QueueJobIf(NewJob(b, opts...), o.success)
 }
