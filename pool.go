@@ -79,7 +79,7 @@ func (p *Pool) QueueJob(j *Job) {
 		return
 	}
 
-	log.Debug("job is queued", log.String("job", j.name))
+	log.Info("job is queued", log.String("job", j.name))
 
 	p.waitingJobs <- j
 }

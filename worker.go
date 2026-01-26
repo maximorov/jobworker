@@ -52,9 +52,9 @@ func (w *Worker) Listen(ctx context.Context) {
 				}
 			} else {
 				if res != nil {
-					log.Debug("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
+					log.Info("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
 				} else {
-					log.Debug("job completed successfully", log.String("job", job.name))
+					log.Info("job completed successfully", log.String("job", job.name))
 				}
 			}
 		}
@@ -68,7 +68,7 @@ func (w *Worker) performJob(ctx context.Context, j *Job) (fmt.Stringer, error) {
 	jCtx, cancel := context.WithTimeout(ctx, j.timeout)
 	defer func() { cancel() }()
 
-	log.Debug("job is performing", log.String("job", j.name))
+	log.Info("job is performing", log.String("job", j.name))
 
 	return j.business(jCtx)
 }
