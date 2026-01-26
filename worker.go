@@ -68,7 +68,7 @@ func (w *Worker) performJob(ctx context.Context, j *Job) (fmt.Stringer, error) {
 	jCtx, cancel := context.WithTimeout(ctx, j.timeout)
 	defer func() { cancel() }()
 
-	log.Info("job is performing", log.String("job", j.name))
+	log.Debug("job is performing", log.String("job", j.name))
 
 	return j.business(jCtx)
 }
