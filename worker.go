@@ -44,19 +44,29 @@ func (w *Worker) Listen(ctx context.Context) {
 			if job == nil {
 				continue
 			}
-			if res, err := w.performJob(ctx, job); err != nil {
-				if iErr, ok := err.(InternalErrorHolder); ok {
-					log.Error("job failed", err, log.String("job", job.name), log.String("internal", iErr.GetInternal().Error()))
-				} else {
-					log.Error("job failed", err, log.String("job", job.name))
-				}
-			} else {
-				if res != nil {
-					log.Info("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
-				} else {
-					log.Info("job completed successfully", log.String("job", job.name))
-				}
-			}
+			w.safePerformJob(ctx, job)
+		}
+	}
+}
+
+func (w *Worker) safePerformJob(ctx context.Context, job *Job) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("job panicked", nil, log.Int("worker_id", w.id), log.String("job", job.name), log.Any("panic", r))
+		}
+	}()
+
+	if res, err := w.performJob(ctx, job); err != nil {
+		if iErr, ok := err.(InternalErrorHolder); ok {
+			log.Error("job failed", err, log.String("job", job.name), log.String("internal", iErr.GetInternal().Error()))
+		} else {
+			log.Error("job failed", err, log.String("job", job.name))
+		}
+	} else {
+		if res != nil {
+			log.Info("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
+		} else {
+			log.Info("job completed successfully", log.String("job", job.name))
 		}
 	}
 }
