@@ -52,7 +52,14 @@ func (w *Worker) Listen(ctx context.Context) {
 func (w *Worker) safePerformJob(ctx context.Context, job *Job) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("job panicked", nil, log.Int("worker_id", w.id), log.String("job", job.name), log.Any("panic", r))
+			var err error
+			switch t := r.(type) {
+			case error:
+				err = t
+			default:
+				err = fmt.Errorf("%v", t)
+			}
+			log.Error("job panicked", err, log.Int("worker_id", w.id), log.String("job", job.name), log.Any("panic", r))
 		}
 	}()
 
