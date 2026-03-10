@@ -64,7 +64,7 @@ func (w *Worker) safePerformJob(ctx context.Context, job *Job) {
 	}()
 
 	if res, err := w.performJob(ctx, job); err != nil {
-		if iErr, ok := err.(InternalErrorHolder); ok {
+		if iErr, ok := err.(InternalErrorHolder); ok && iErr.GetInternal() != nil {
 			log.Error("job failed", err, log.String("job", job.name), log.String("internal", iErr.GetInternal().Error()))
 		} else {
 			log.Error("job failed", err, log.String("job", job.name))
