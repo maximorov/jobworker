@@ -1,11 +1,13 @@
 package jobworker
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/Cery-Tech/log/v2"
 	"github.com/robfig/cron/v3"
 )
+
+var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 type scheduled interface {
 	isItTime() bool
@@ -59,12 +61,13 @@ func NewScheduledJob(b Business, every time.Duration, opts ...JobOption) *Schedu
 }
 
 // NewScheduledCronJob creates a new job that runs based on a cron expression.
-func NewScheduledCronJob(b Business, pattern string, opts ...JobOption) *ScheduledJob {
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	schedule, err := parser.Parse(pattern)
+func NewScheduledCronJob(b Business, pattern string, opts ...JobOption) (*ScheduledJob, error) {
+	schedule, err := cronParser.Parse(pattern)
 	if err != nil || schedule == nil {
-		log.Fatal("invalid cron expression", err, log.String("pattern", pattern))
-		return nil
+		if err == nil {
+			err = fmt.Errorf("cron parser returned nil schedule")
+		}
+		return nil, fmt.Errorf("invalid cron expression %q: %w", pattern, err)
 	}
 
 	return &ScheduledJob{
@@ -74,5 +77,5 @@ func NewScheduledCronJob(b Business, pattern string, opts ...JobOption) *Schedul
 			nextTime: schedule.Next(time.Now()),
 		},
 		NewJob(b, opts...),
-	}
+	}, nil
 }

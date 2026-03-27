@@ -10,47 +10,37 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNewPool tests the creation of a new Pool.
-func TestNewPool(t *testing.T) {
+// TestListen tests the creation of a new Pool.
+func TestListen(t *testing.T) {
 	numWorkers := 5
-	pool := NewPool(numWorkers)
+	pool, err := Listen(context.Background(), numWorkers)
 
+	assert.NoError(t, err)
 	assert.NotNil(t, pool)
 	assert.Len(t, pool.workers, numWorkers)
 	assert.NotNil(t, pool.waitingJobs)
 	assert.NotNil(t, pool.workerFinished)
 	assert.NotNil(t, pool.stopped)
 	assert.False(t, pool.stopped.Load())
+
+	assert.NoError(t, pool.Shutdown())
 }
 
 // TestPoolListenAndShutdown tests the lifecycle of the pool.
 func TestPoolListenAndShutdown(t *testing.T) {
-	pool := NewPool(2)
-	ctx, cancel := context.WithCancel(context.Background())
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		pool.Listen(ctx)
-	}()
-
-	// Allow some time for the pool to start listening
-	time.Sleep(100 * time.Millisecond)
-
-	cancel()
-	err := pool.Shutdown()
+	pool, err := Listen(context.Background(), 2)
 	assert.NoError(t, err)
-	wg.Wait() // Wait for Listen to return
+	assert.NotNil(t, pool)
+	assert.NoError(t, pool.Shutdown())
 }
 
 // TestPoolQueueJob tests queuing a job to the pool.
 func TestPoolQueueJob(t *testing.T) {
-	pool := NewPool(1)
 	ctx, cancel := context.WithCancel(context.Background())
+	pool, err := Listen(ctx, 1)
 	defer cancel()
-
-	go pool.Listen(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, pool)
 
 	done := make(chan struct{})
 	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
@@ -72,7 +62,9 @@ func TestPoolQueueJob(t *testing.T) {
 
 // TestPoolQueueJob_WhenStopped tests that jobs are not queued when pool is stopped.
 func TestPoolQueueJob_WhenStopped(t *testing.T) {
-	pool := NewPool(1)
+	pool, err := Listen(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, pool)
 
 	pool.stopped.Store(true)
 
@@ -88,7 +80,9 @@ func TestPoolQueueJob_WhenStopped(t *testing.T) {
 
 // TestPoolScheduleJob tests scheduling a job.
 func TestPoolScheduleJob(t *testing.T) {
-	pool := NewPool(1)
+	pool, err := Listen(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, pool)
 
 	scheduledJob := NewScheduledJob(func(ctx context.Context) (fmt.Stringer, error) {
 		return nil, nil
@@ -100,24 +94,58 @@ func TestPoolScheduleJob(t *testing.T) {
 	assert.Len(t, pool.scheduledJobs, 1)
 	assert.Equal(t, StateNew, scheduledJob.state)
 	pool.scheduledMu.RUnlock()
+
+	assert.NoError(t, pool.Shutdown())
+}
+
+func TestPoolScheduleJob_ExecutesOnTime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pool, err := Listen(ctx, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, pool)
+
+	done := make(chan time.Time, 1)
+	startedAt := time.Now()
+
+	scheduledJob := NewScheduledJob(func(ctx context.Context) (fmt.Stringer, error) {
+		done <- time.Now()
+		return nil, nil
+	}, 50*time.Millisecond)
+
+	pool.ScheduleJob(scheduledJob)
+
+	select {
+	case processedAt := <-done:
+		assert.GreaterOrEqual(t, processedAt.Sub(startedAt), 50*time.Millisecond)
+		assert.Less(t, processedAt.Sub(startedAt), 500*time.Millisecond)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for scheduled job to be processed")
+	}
+
+	assert.NoError(t, pool.Shutdown())
 }
 
 // TestPoolInitGlobalPool tests setting the pool as global.
 func TestPoolInitGlobalPool(t *testing.T) {
-	p := NewPool(1)
+	p, err := Listen(context.Background(), 1)
+	assert.NoError(t, err)
 	p.InitGlobalPool()
 
 	assert.Equal(t, p, pool)
+
+	assert.NoError(t, p.Shutdown())
 }
 
 // TestPoolMultipleWorkers tests that multiple workers can process jobs concurrently.
 func TestPoolMultipleWorkers(t *testing.T) {
 	numWorkers := 3
-	p := NewPool(numWorkers)
 	ctx, cancel := context.WithCancel(context.Background())
+	p, err := Listen(ctx, numWorkers)
 	defer cancel()
-
-	go p.Listen(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, p)
 
 	var wg sync.WaitGroup
 	processedCount := 0

@@ -21,6 +21,9 @@ func TestScheduledEvery_IsItTime(t *testing.T) {
 
 	job.nextTime = fixedNow.Add(time.Second)
 	assert.False(t, job.isItTime(), "should not be time to run yet")
+
+	job.nextTime = fixedNow
+	assert.True(t, job.isItTime(), "should be time to run when nextTime equals now")
 }
 
 func TestScheduledEvery_QueueItForLater(t *testing.T) {
@@ -53,6 +56,9 @@ func TestScheduledCron_IsItTime(t *testing.T) {
 
 	job.nextTime = fixedNow.Add(time.Second)
 	assert.False(t, job.isItTime(), "should not be time to run yet")
+
+	job.nextTime = fixedNow
+	assert.True(t, job.isItTime(), "should be time to run when nextTime equals now")
 }
 
 func TestScheduledCron_QueueItForLater(t *testing.T) {
@@ -79,7 +85,14 @@ func TestNewScheduledJob(t *testing.T) {
 }
 
 func TestNewScheduledCronJob(t *testing.T) {
-	job := NewScheduledCronJob(nil, "*/5 * * * *")
+	job, err := NewScheduledCronJob(nil, "*/5 * * * *")
+	assert.NoError(t, err)
 	assert.NotNil(t, job)
 	assert.Implements(t, (*scheduled)(nil), job.scheduled)
+}
+
+func TestNewScheduledCronJob_InvalidPattern(t *testing.T) {
+	job, err := NewScheduledCronJob(nil, "invalid")
+	assert.Error(t, err)
+	assert.Nil(t, job)
 }

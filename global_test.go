@@ -11,11 +11,11 @@ import (
 )
 
 func TestQueueJob(t *testing.T) {
-	p := NewPool(1)
-	p.InitGlobalPool()
 	ctx, cancel := context.WithCancel(context.Background())
+	p, err := Listen(ctx, 1)
+	assert.NoError(t, err)
+	p.InitGlobalPool()
 	defer cancel()
-	go p.Listen(ctx)
 
 	var processed bool
 	var mu sync.Mutex
@@ -45,11 +45,11 @@ func TestQueueJob(t *testing.T) {
 }
 
 func TestQueueJob_WithOptions(t *testing.T) {
-	p := NewPool(1)
-	p.InitGlobalPool()
 	ctx, cancel := context.WithCancel(context.Background())
+	p, err := Listen(ctx, 1)
+	assert.NoError(t, err)
+	p.InitGlobalPool()
 	defer cancel()
-	go p.Listen(ctx)
 
 	done := make(chan struct{})
 
@@ -75,11 +75,11 @@ func TestQueueJob_WithOptions(t *testing.T) {
 }
 
 func TestQueueJob_WithDelay(t *testing.T) {
-	p := NewPool(1)
-	p.InitGlobalPool()
 	ctx, cancel := context.WithCancel(context.Background())
+	p, err := Listen(ctx, 1)
+	assert.NoError(t, err)
+	p.InitGlobalPool()
 	defer cancel()
-	go p.Listen(ctx)
 
 	done := make(chan struct{})
 	startedAt := time.Now()
@@ -105,11 +105,11 @@ func TestQueueJob_WithDelay(t *testing.T) {
 }
 
 func TestQueueJobIf_True(t *testing.T) {
-	p := NewPool(1)
-	p.InitGlobalPool()
 	ctx, cancel := context.WithCancel(context.Background())
+	p, err := Listen(ctx, 1)
+	assert.NoError(t, err)
+	p.InitGlobalPool()
 	defer cancel()
-	go p.Listen(ctx)
 
 	var processed bool
 	var mu sync.Mutex
@@ -141,11 +141,11 @@ func TestQueueJobIf_True(t *testing.T) {
 }
 
 func TestQueueJobIf_False(t *testing.T) {
-	p := NewPool(1)
-	p.InitGlobalPool()
 	ctx, cancel := context.WithCancel(context.Background())
+	p, err := Listen(ctx, 1)
+	assert.NoError(t, err)
+	p.InitGlobalPool()
 	defer cancel()
-	go p.Listen(ctx)
 
 	var processed bool
 	var mu sync.Mutex

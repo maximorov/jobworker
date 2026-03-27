@@ -21,17 +21,20 @@ type Pool struct {
 	workerFinished chan struct{}
 	scheduledJobs  []*ScheduledJob
 	scheduledMu    sync.RWMutex
+	shutdownOnce   sync.Once
+	shutdownCh     chan struct{}
 
 	stopped *atomic.Bool
 }
 
-// NewPool creates a new worker pool with the specified number of workers.
-func NewPool(ctx context.Context, workersNum int) *Pool {
+// newPool creates a new worker pool with the specified number of workers.
+func newPool(ctx context.Context, workersNum int) *Pool {
 	res := &Pool{
 		ctx:            ctx,
 		workers:        make([]Worker, workersNum),
 		waitingJobs:    make(chan *Job, queueSize),
 		workerFinished: make(chan struct{}),
+		shutdownCh:     make(chan struct{}),
 		stopped:        atomic.NewBool(false),
 	}
 
@@ -47,11 +50,12 @@ func (p *Pool) InitGlobalPool() {
 	pool = p
 }
 
-// Listen starts the worker pool and begins processing jobs.
-// It also starts a ticker to check for scheduled jobs.
-func (p *Pool) Listen(ctx context.Context) error {
+// Listen creates and starts a worker pool.
+func Listen(ctx context.Context, workersNum int) (*Pool, error) {
+	p := newPool(ctx, workersNum)
+
 	for i := range p.workers {
-		go p.workers[i].Listen(ctx)
+		go p.workers[i].Listen(p.ctx)
 	}
 
 	go func() {
@@ -60,7 +64,9 @@ func (p *Pool) Listen(ctx context.Context) error {
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-p.ctx.Done():
+				return
+			case <-p.shutdownCh:
 				return
 			case <-ticker.C:
 				p.queueScheduledJobs()
@@ -68,9 +74,7 @@ func (p *Pool) Listen(ctx context.Context) error {
 		}
 	}()
 
-	<-ctx.Done()
-
-	return nil
+	return p, nil
 }
 
 // QueueJob adds a job to the waiting queue to be processed by a worker.
@@ -99,6 +103,8 @@ func (p *Pool) enqueueJobAfterDelay(j *Job) {
 	case <-timer.C:
 		p.enqueueJob(j)
 	case <-p.ctx.Done():
+		return
+	case <-p.shutdownCh:
 		return
 	}
 }
@@ -153,13 +159,16 @@ func (p *Pool) queueScheduledJobs() {
 
 // Shutdown gracefully stops the worker pool, waiting for all workers to finish their current jobs.
 func (p *Pool) Shutdown() error {
-	p.stopped.Store(true)
-	close(p.waitingJobs)
+	p.shutdownOnce.Do(func() {
+		p.stopped.Store(true)
+		close(p.shutdownCh)
+		close(p.waitingJobs)
 
-	// waiting for workers are finished
-	for i := 0; i < len(p.workers); i++ {
-		<-p.workerFinished
-	}
+		// waiting for workers are finished
+		for i := 0; i < len(p.workers); i++ {
+			<-p.workerFinished
+		}
+	})
 
 	return nil
 }

@@ -19,14 +19,16 @@ This project implements a background job processing system in Go. It allows you 
 First, create a new worker pool with the desired number of workers:
 
 ```go
-pool := jobworker.NewPool(5) // Creates a pool with 5 workers
+pool, err := jobworker.Listen(context.Background(), 5) // Creates a pool with 5 workers and starts it
+if err != nil {
+    panic(err)
+}
 ```
 
-Then, initialize the global pool and start listening for jobs:
+Then, initialize the global pool:
 
 ```go
 pool.InitGlobalPool()
-go pool.Listen(context.Background())
 ```
 
 ### Queueing a Job
@@ -62,10 +64,13 @@ jobworker.ScheduleJob(scheduledJob)
 Or using a cron expression:
 
 ```go
-cronJob := jobworker.NewScheduledCronJob(func(ctx context.Context) (fmt.Stringer, error) {
+cronJob, err := jobworker.NewScheduledCronJob(func(ctx context.Context) (fmt.Stringer, error) {
     // Your job logic here
     return nil, nil
 }, "0 * * * *") // Runs at the beginning of every hour
+if err != nil {
+    panic(err)
+}
 jobworker.ScheduleJob(cronJob)
 ```
 
