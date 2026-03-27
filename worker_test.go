@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Cery-Tech/log/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,9 +20,11 @@ func (r SuccessResponse) String() string {
 
 // TestWorker_Listen tests the worker's ability to receive and process a job.
 func TestWorker_Listen(t *testing.T) {
-	jobs := make(chan *Job, 1)
-	finished := make(chan struct{}, 1)
-	worker := NewWorker(1, jobs, finished)
+	p, err := Listen(context.Background(), 1, log.New())
+	assert.NoError(t, err)
+	defer p.Shutdown()
+
+	worker := NewWorker(1, p)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go worker.Listen(ctx)
@@ -32,7 +35,7 @@ func TestWorker_Listen(t *testing.T) {
 		return nil, nil
 	})
 
-	jobs <- job
+	p.waitingJobs <- job
 
 	// Give the worker time to process the job
 	time.Sleep(100 * time.Millisecond)
@@ -40,12 +43,16 @@ func TestWorker_Listen(t *testing.T) {
 	assert.True(t, processed, "Worker should have processed the job")
 
 	cancel()
-	<-finished // Wait for the worker to finish
+	<-p.workerFinished // Wait for the worker to finish
 }
 
 // TestWorker_PerformJob_Success tests the successful performance of a job.
 func TestWorker_PerformJob_Success(t *testing.T) {
-	worker := Worker{}
+	p, err := Listen(context.Background(), 1, log.New())
+	assert.NoError(t, err)
+	defer p.Shutdown()
+
+	worker := NewWorker(1, p)
 	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
 		return &SuccessResponse{}, nil
 	})
@@ -60,7 +67,11 @@ func TestWorker_PerformJob_Success(t *testing.T) {
 
 // TestWorker_PerformJob_Error tests a job that returns an error.
 func TestWorker_PerformJob_Error(t *testing.T) {
-	worker := Worker{}
+	p, err := Listen(context.Background(), 1, log.New())
+	assert.NoError(t, err)
+	defer p.Shutdown()
+
+	worker := NewWorker(1, p)
 	jobErr := errors.New("job failed")
 	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
 		return nil, jobErr
@@ -76,7 +87,11 @@ func TestWorker_PerformJob_Error(t *testing.T) {
 
 // TestWorker_PerformJob_Timeout tests a job that times out.
 func TestWorker_PerformJob_Timeout(t *testing.T) {
-	worker := Worker{}
+	p, err := Listen(context.Background(), 1, log.New())
+	assert.NoError(t, err)
+	defer p.Shutdown()
+
+	worker := NewWorker(1, p)
 	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
 		select {
 		case <-ctx.Done():
@@ -86,7 +101,7 @@ func TestWorker_PerformJob_Timeout(t *testing.T) {
 		}
 	}, JobWithTimeout(50*time.Millisecond))
 
-	_, err := worker.performJob(context.Background(), job)
+	_, err = worker.performJob(context.Background(), job)
 
 	assert.Error(t, err)
 	assert.Equal(t, context.DeadlineExceeded, err)
@@ -109,7 +124,11 @@ func (e *internalError) GetInternal() error {
 
 // TestWorker_PerformJob_InternalError tests a job that returns an error with internal error.
 func TestWorker_PerformJob_InternalError(t *testing.T) {
-	worker := Worker{}
+	p, err := Listen(context.Background(), 1, log.New())
+	assert.NoError(t, err)
+	defer p.Shutdown()
+
+	worker := NewWorker(1, p)
 	internalErr := errors.New("database connection failed")
 	jobErr := &internalError{
 		msg:      "job failed",
@@ -131,23 +150,14 @@ func TestWorker_PerformJob_InternalError(t *testing.T) {
 	assert.Equal(t, internalErr, iErr.GetInternal())
 }
 
-// TestNewWorker tests the creation of a new Worker.
-func TestNewWorker(t *testing.T) {
-	jobs := make(chan *Job, 1)
-	finished := make(chan struct{}, 1)
-
-	worker := NewWorker(42, jobs, finished)
-
-	assert.Equal(t, 42, worker.id)
-	assert.Equal(t, jobs, worker.jobs)
-	assert.Equal(t, finished, worker.finished)
-}
-
 // TestWorker_Listen_ContextCancel tests that worker stops when context is canceled.
 func TestWorker_Listen_ContextCancel(t *testing.T) {
-	jobs := make(chan *Job, 1)
-	finished := make(chan struct{}, 1)
-	worker := NewWorker(1, jobs, finished)
+	p, err := Listen(context.Background(), 1, log.New())
+	assert.NoError(t, err)
+	defer p.Shutdown()
+
+	p.workerFinished = make(chan struct{}, 1)
+	worker := NewWorker(1, p)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -156,7 +166,7 @@ func TestWorker_Listen_ContextCancel(t *testing.T) {
 	cancel()
 
 	select {
-	case <-finished:
+	case <-p.workerFinished:
 		// Worker finished as expected
 	case <-time.After(time.Second):
 		t.Fatal("Worker did not finish after context cancel")

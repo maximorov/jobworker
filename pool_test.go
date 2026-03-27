@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Cery-Tech/log/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestListen tests the creation of a new Pool.
 func TestListen(t *testing.T) {
 	numWorkers := 5
-	pool, err := Listen(context.Background(), numWorkers)
+	pool, err := Listen(context.Background(), numWorkers, log.New())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
@@ -28,7 +29,7 @@ func TestListen(t *testing.T) {
 
 // TestPoolListenAndShutdown tests the lifecycle of the pool.
 func TestPoolListenAndShutdown(t *testing.T) {
-	pool, err := Listen(context.Background(), 2)
+	pool, err := Listen(context.Background(), 2, log.New())
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
 	assert.NoError(t, pool.Shutdown())
@@ -37,7 +38,7 @@ func TestPoolListenAndShutdown(t *testing.T) {
 // TestPoolQueueJob tests queuing a job to the pool.
 func TestPoolQueueJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	pool, err := Listen(ctx, 1)
+	pool, err := Listen(ctx, 1, log.New())
 	defer cancel()
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
@@ -62,7 +63,7 @@ func TestPoolQueueJob(t *testing.T) {
 
 // TestPoolQueueJob_WhenStopped tests that jobs are not queued when pool is stopped.
 func TestPoolQueueJob_WhenStopped(t *testing.T) {
-	pool, err := Listen(context.Background(), 1)
+	pool, err := Listen(context.Background(), 1, log.New())
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
 
@@ -80,7 +81,7 @@ func TestPoolQueueJob_WhenStopped(t *testing.T) {
 
 // TestPoolScheduleJob tests scheduling a job.
 func TestPoolScheduleJob(t *testing.T) {
-	pool, err := Listen(context.Background(), 1)
+	pool, err := Listen(context.Background(), 1, log.New())
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
 
@@ -100,7 +101,7 @@ func TestPoolScheduleJob(t *testing.T) {
 
 // TestPoolInitGlobalPool tests setting the pool as global.
 func TestPoolInitGlobalPool(t *testing.T) {
-	p, err := Listen(context.Background(), 1)
+	p, err := Listen(context.Background(), 1, log.New())
 	assert.NoError(t, err)
 	p.InitGlobalPool()
 
@@ -113,7 +114,7 @@ func TestPoolInitGlobalPool(t *testing.T) {
 func TestPoolMultipleWorkers(t *testing.T) {
 	numWorkers := 3
 	ctx, cancel := context.WithCancel(context.Background())
-	p, err := Listen(ctx, numWorkers)
+	p, err := Listen(ctx, numWorkers, log.New())
 	defer cancel()
 	assert.NoError(t, err)
 	assert.NotNil(t, p)
@@ -149,5 +150,5 @@ func TestPoolMultipleWorkers(t *testing.T) {
 		t.Fatal("timeout waiting for jobs to be processed")
 	}
 
-	p.Shutdown()
+	_ = p.Shutdown()
 }

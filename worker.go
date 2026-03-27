@@ -14,17 +14,16 @@ type InternalErrorHolder interface {
 
 // Worker is responsible for executing jobs.
 type Worker struct {
-	id       int
-	jobs     chan *Job
-	finished chan struct{}
+	id   int
+	pool *Pool
 }
 
 // NewWorker creates a new worker.
-func NewWorker(id int, jobs chan *Job, finished chan struct{}) Worker {
+func NewWorker(id int, pool *Pool) Worker {
+	//res.waitingJobs, res.workerFinished
 	return Worker{
-		id:       id,
-		jobs:     jobs,
-		finished: finished,
+		id:   id,
+		pool: pool,
 	}
 }
 
@@ -34,11 +33,11 @@ func (w *Worker) Listen(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			w.finished <- struct{}{}
+			w.pool.workerFinished <- struct{}{}
 			return
-		case job, ok := <-w.jobs:
+		case job, ok := <-w.pool.waitingJobs:
 			if !ok {
-				w.finished <- struct{}{}
+				w.pool.workerFinished <- struct{}{}
 				return
 			}
 			if job == nil {
@@ -59,21 +58,21 @@ func (w *Worker) safePerformJob(ctx context.Context, job *Job) {
 			default:
 				err = fmt.Errorf("%v", t)
 			}
-			log.Error("job panicked", err, log.Int("worker_id", w.id), log.String("job", job.name), log.Any("panic", r))
+			w.pool.log.Error("job panicked", err, log.Int("worker_id", w.id), log.String("job", job.name), log.Any("panic", r))
 		}
 	}()
 
 	if res, err := w.performJob(ctx, job); err != nil {
 		if iErr, ok := err.(InternalErrorHolder); ok && iErr.GetInternal() != nil {
-			log.Error("job failed", err, log.String("job", job.name), log.String("internal", iErr.GetInternal().Error()))
+			w.pool.log.Error("job failed", err, log.String("job", job.name), log.String("internal", iErr.GetInternal().Error()))
 		} else {
-			log.Error("job failed", err, log.String("job", job.name))
+			w.pool.log.Error("job failed", err, log.String("job", job.name))
 		}
 	} else {
 		if res != nil {
-			log.Info("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
+			w.pool.log.Info("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
 		} else {
-			log.Info("job completed successfully", log.String("job", job.name))
+			w.pool.log.Info("job completed successfully", log.String("job", job.name))
 		}
 	}
 }
@@ -85,7 +84,7 @@ func (w *Worker) performJob(ctx context.Context, j *Job) (fmt.Stringer, error) {
 	jCtx, cancel := context.WithTimeout(ctx, j.timeout)
 	defer func() { cancel() }()
 
-	log.Debug("job is performing", log.String("job", j.name))
+	w.pool.log.Debug("job is performing", log.String("job", j.name))
 
 	return j.business(jCtx)
 }

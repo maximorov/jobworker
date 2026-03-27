@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Cery-Tech/log/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestAfter_QueueAndNotify_Success tests that jobs are queued when Notify is called with a nil error.
 func TestAfter_QueueAndNotify_Success(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	pool, err := Listen(ctx, 1)
+	pool, err := Listen(ctx, 1, log.New())
 	assert.NoError(t, err)
 	pool.InitGlobalPool()
 	defer cancel()
@@ -40,7 +41,7 @@ func TestAfter_QueueAndNotify_Success(t *testing.T) {
 // TestAfter_QueueAndNotify_Error tests that jobs are not queued when Notify is called with an error.
 func TestAfter_QueueAndNotify_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	pool, err := Listen(ctx, 1)
+	pool, err := Listen(ctx, 1, log.New())
 	assert.NoError(t, err)
 	pool.InitGlobalPool()
 	defer cancel()

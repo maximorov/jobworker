@@ -24,22 +24,25 @@ type Pool struct {
 	shutdownOnce   sync.Once
 	shutdownCh     chan struct{}
 
+	log *log.Logger
+
 	stopped *atomic.Bool
 }
 
 // newPool creates a new worker pool with the specified number of workers.
-func newPool(ctx context.Context, workersNum int) *Pool {
+func newPool(ctx context.Context, workersNum int, logger *log.Logger) *Pool {
 	res := &Pool{
 		ctx:            ctx,
 		workers:        make([]Worker, workersNum),
 		waitingJobs:    make(chan *Job, queueSize),
 		workerFinished: make(chan struct{}),
 		shutdownCh:     make(chan struct{}),
+		log:            logger.With(log.String("cat", "Job Worker")),
 		stopped:        atomic.NewBool(false),
 	}
 
 	for i := 0; i < workersNum; i++ {
-		res.workers[i] = NewWorker(i+1, res.waitingJobs, res.workerFinished)
+		res.workers[i] = NewWorker(i+1, res)
 	}
 
 	return res
@@ -51,8 +54,8 @@ func (p *Pool) InitGlobalPool() {
 }
 
 // Listen creates and starts a worker pool.
-func Listen(ctx context.Context, workersNum int) (*Pool, error) {
-	p := newPool(ctx, workersNum)
+func Listen(ctx context.Context, workersNum int, log *log.Logger) (*Pool, error) {
+	p := newPool(ctx, workersNum, log)
 
 	for i := range p.workers {
 		go p.workers[i].Listen(p.ctx)
@@ -74,6 +77,8 @@ func Listen(ctx context.Context, workersNum int) (*Pool, error) {
 		}
 	}()
 
+	p.log.Info("pool is listening")
+
 	return p, nil
 }
 
@@ -82,12 +87,12 @@ func (p *Pool) QueueJob(j *Job) {
 	j.state = StateWaiting
 
 	if p.stopped.Load() {
-		log.Info("jobs worker pool is stopped")
+		p.log.Info("jobs worker pool is stopped")
 		return
 	}
 
 	if j.delay > 0 {
-		log.Debug("job is delayed", log.String("job", j.name), log.Duration("delay", j.delay))
+		p.log.Debug("job is delayed", log.String("job", j.name), log.Duration("delay", j.delay))
 		go p.enqueueJobAfterDelay(j)
 		return
 	}
@@ -169,6 +174,7 @@ func (p *Pool) Shutdown() error {
 			<-p.workerFinished
 		}
 	})
+	p.log.Info("pool is stopped")
 
 	return nil
 }

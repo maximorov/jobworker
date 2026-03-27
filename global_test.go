@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Cery-Tech/log/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestQueueJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	p, err := Listen(ctx, 1)
+	p, err := Listen(ctx, 1, log.New())
 	assert.NoError(t, err)
 	p.InitGlobalPool()
 	defer cancel()
@@ -46,7 +47,7 @@ func TestQueueJob(t *testing.T) {
 
 func TestQueueJob_WithOptions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	p, err := Listen(ctx, 1)
+	p, err := Listen(ctx, 1, log.New())
 	assert.NoError(t, err)
 	p.InitGlobalPool()
 	defer cancel()
@@ -76,7 +77,7 @@ func TestQueueJob_WithOptions(t *testing.T) {
 
 func TestQueueJob_WithDelay(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	p, err := Listen(ctx, 1)
+	p, err := Listen(ctx, 1, log.New())
 	assert.NoError(t, err)
 	p.InitGlobalPool()
 	defer cancel()
@@ -106,7 +107,7 @@ func TestQueueJob_WithDelay(t *testing.T) {
 
 func TestQueueJobIf_True(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	p, err := Listen(ctx, 1)
+	p, err := Listen(ctx, 1, log.New())
 	assert.NoError(t, err)
 	p.InitGlobalPool()
 	defer cancel()
@@ -142,7 +143,7 @@ func TestQueueJobIf_True(t *testing.T) {
 
 func TestQueueJobIf_False(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	p, err := Listen(ctx, 1)
+	p, err := Listen(ctx, 1, log.New())
 	assert.NoError(t, err)
 	p.InitGlobalPool()
 	defer cancel()
