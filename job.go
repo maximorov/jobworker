@@ -24,6 +24,7 @@ type Job struct {
 	state    jobState
 	business Business
 	timeout  time.Duration
+	delay    time.Duration
 	name     string
 }
 

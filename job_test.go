@@ -28,9 +28,11 @@ func TestNewJob(t *testing.T) {
 	// Test with custom options
 	customTimeout := 20 * time.Second
 	customName := "custom-job"
-	jobWithOpts := NewJob(business, JobWithTimeout(customTimeout), JobWithName(customName))
+	customDelay := 45 * time.Second
+	jobWithOpts := NewJob(business, JobWithTimeout(customTimeout), JobWithDelay(customDelay), JobWithName(customName))
 	assert.NotNil(t, jobWithOpts)
 	assert.Equal(t, customTimeout, jobWithOpts.timeout)
+	assert.Equal(t, customDelay, jobWithOpts.delay)
 	assert.Equal(t, customName, jobWithOpts.name)
 }
 

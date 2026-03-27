@@ -41,6 +41,12 @@ job := jobworker.NewJob(func(ctx context.Context) (fmt.Stringer, error) {
 jobworker.QueueJob(job)
 ```
 
+If you want to postpone execution, pass `JobWithDelay` with a `time.Duration`:
+
+```go
+jobworker.QueueJob(job, jobworker.JobWithDelay(time.Minute))
+```
+
 ### Scheduled Jobs
 
 You can schedule jobs to run at a specific interval:

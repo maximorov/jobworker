@@ -36,6 +36,13 @@ func JobWithTimeout(timeout time.Duration) JobOption {
 	}
 }
 
+// JobWithDelay returns a JobOption that delays queueing the job.
+func JobWithDelay(delay time.Duration) JobOption {
+	return func(j *Job) {
+		j.delay = delay
+	}
+}
+
 // JobWithName returns a JobOption that sets the name for a job.
 func JobWithName(name string) JobOption {
 	return func(j *Job) {

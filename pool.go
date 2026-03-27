@@ -2,6 +2,7 @@ package jobworker
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ const checkScheduledJobsInterval = 5 * time.Second
 
 // Pool manages a collection of workers and a queue of jobs to be processed.
 type Pool struct {
+	ctx            context.Context
 	workers        []Worker
 	waitingJobs    chan *Job
 	workerFinished chan struct{}
@@ -24,8 +26,9 @@ type Pool struct {
 }
 
 // NewPool creates a new worker pool with the specified number of workers.
-func NewPool(workersNum int) *Pool {
+func NewPool(ctx context.Context, workersNum int) *Pool {
 	res := &Pool{
+		ctx:            ctx,
 		workers:        make([]Worker, workersNum),
 		waitingJobs:    make(chan *Job, queueSize),
 		workerFinished: make(chan struct{}),
@@ -79,7 +82,47 @@ func (p *Pool) QueueJob(j *Job) {
 		return
 	}
 
+	if j.delay > 0 {
+		log.Debug("job is delayed", log.String("job", j.name), log.Duration("delay", j.delay))
+		go p.enqueueJobAfterDelay(j)
+		return
+	}
+
+	p.enqueueJob(j)
+}
+
+func (p *Pool) enqueueJobAfterDelay(j *Job) {
+	timer := time.NewTimer(j.delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		p.enqueueJob(j)
+	case <-p.ctx.Done():
+		return
+	}
+}
+
+func (p *Pool) enqueueJob(j *Job) {
 	log.Debug("job is queued", log.String("job", j.name))
+
+	defer func() {
+		if r := recover(); r != nil {
+			var err error
+			switch t := r.(type) {
+			case error:
+				err = t
+			default:
+				err = fmt.Errorf("%v", t)
+			}
+			log.Error("job queueing failed", err, log.String("job", j.name), log.Any("panic", r))
+		}
+	}()
+
+	if p.stopped.Load() {
+		log.Info("jobs worker pool is stopped")
+		return
+	}
 
 	p.waitingJobs <- j
 }
