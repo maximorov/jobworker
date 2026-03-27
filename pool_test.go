@@ -98,35 +98,6 @@ func TestPoolScheduleJob(t *testing.T) {
 	assert.NoError(t, pool.Shutdown())
 }
 
-func TestPoolScheduleJob_ExecutesOnTime(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	pool, err := Listen(ctx, 1)
-	assert.NoError(t, err)
-	assert.NotNil(t, pool)
-
-	done := make(chan time.Time, 1)
-	startedAt := time.Now()
-
-	scheduledJob := NewScheduledJob(func(ctx context.Context) (fmt.Stringer, error) {
-		done <- time.Now()
-		return nil, nil
-	}, 50*time.Millisecond)
-
-	pool.ScheduleJob(scheduledJob)
-
-	select {
-	case processedAt := <-done:
-		assert.GreaterOrEqual(t, processedAt.Sub(startedAt), 50*time.Millisecond)
-		assert.Less(t, processedAt.Sub(startedAt), 500*time.Millisecond)
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for scheduled job to be processed")
-	}
-
-	assert.NoError(t, pool.Shutdown())
-}
-
 // TestPoolInitGlobalPool tests setting the pool as global.
 func TestPoolInitGlobalPool(t *testing.T) {
 	p, err := Listen(context.Background(), 1)

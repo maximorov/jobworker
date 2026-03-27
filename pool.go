@@ -11,7 +11,7 @@ import (
 )
 
 const queueSize = 10
-const checkScheduledJobsInterval = 5 * time.Second
+const checkScheduledJobsInterval = 1 * time.Second
 
 // Pool manages a collection of workers and a queue of jobs to be processed.
 type Pool struct {

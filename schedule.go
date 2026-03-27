@@ -21,7 +21,7 @@ type scheduledEvery struct {
 }
 
 func (j *scheduledEvery) isItTime() bool {
-	return j.nextTime.Before(j.now())
+	return !j.nextTime.After(j.now())
 }
 
 func (j *scheduledEvery) queueItForLater() {
@@ -35,7 +35,7 @@ type scheduledCron struct {
 }
 
 func (j *scheduledCron) isItTime() bool {
-	return j.nextTime.Before(j.now())
+	return !j.nextTime.After(j.now())
 }
 
 func (j *scheduledCron) queueItForLater() {
