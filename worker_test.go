@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,9 +30,12 @@ func TestWorker_Listen(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go worker.Listen(ctx)
 
+	var mu sync.Mutex
 	processed := false
 	job := NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		mu.Lock()
 		processed = true
+		mu.Unlock()
 		return nil, nil
 	})
 
@@ -40,7 +44,9 @@ func TestWorker_Listen(t *testing.T) {
 	// Give the worker time to process the job
 	time.Sleep(100 * time.Millisecond)
 
+	mu.Lock()
 	assert.True(t, processed, "Worker should have processed the job")
+	mu.Unlock()
 
 	cancel()
 	<-p.workerFinished // Wait for the worker to finish

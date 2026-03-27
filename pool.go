@@ -115,7 +115,7 @@ func (p *Pool) enqueueJobAfterDelay(j *Job) {
 }
 
 func (p *Pool) enqueueJob(j *Job) {
-	log.Debug("job is queued", log.String("job", j.name))
+	p.log.Debug("job is queued", log.String("job", j.name))
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -126,12 +126,12 @@ func (p *Pool) enqueueJob(j *Job) {
 			default:
 				err = fmt.Errorf("%v", t)
 			}
-			log.Error("job queueing failed", err, log.String("job", j.name), log.Any("panic", r))
+			p.log.Error("job queueing failed", err, log.String("job", j.name), log.Any("panic", r))
 		}
 	}()
 
 	if p.stopped.Load() {
-		log.Info("jobs worker pool is stopped")
+		p.log.Info("jobs worker pool is stopped")
 		return
 	}
 

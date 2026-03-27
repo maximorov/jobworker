@@ -19,7 +19,7 @@ This project implements a background job processing system in Go. It allows you 
 First, create a new worker pool with the desired number of workers:
 
 ```go
-pool, err := jobworker.Listen(context.Background(), 5) // Creates a pool with 5 workers and starts it
+pool, err := jobworker.Listen(context.Background(), 5, logger) // Creates a pool with 5 workers and starts it
 if err != nil {
     panic(err)
 }
