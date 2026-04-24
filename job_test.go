@@ -19,7 +19,7 @@ func TestNewJob(t *testing.T) {
 	// Test with default options
 	job := NewJob(business)
 	assert.NotNil(t, job)
-	assert.Equal(t, StateNew, job.state)
+	assert.Equal(t, StateNew, job.getState())
 	assert.NotNil(t, job.business)
 	assert.Equal(t, defaultJobTimeout, job.timeout)
 	_, err := uuid.Parse(job.name)
@@ -40,15 +40,15 @@ func TestNewJob(t *testing.T) {
 func TestJobCouldBeProcessed(t *testing.T) {
 	job := &Job{}
 
-	job.state = StateNew
+	job.setState(StateNew)
 	assert.True(t, job.couldBeProcessed(), "Job with 'new' state should be processable")
 
-	job.state = StateProcessed
+	job.setState(StateProcessed)
 	assert.True(t, job.couldBeProcessed(), "Job with 'processed' state should be processable")
 
-	job.state = StateWaiting
+	job.setState(StateWaiting)
 	assert.False(t, job.couldBeProcessed(), "Job with 'waiting' state should not be processable")
 
-	job.state = StateProcessing
+	job.setState(StateProcessing)
 	assert.False(t, job.couldBeProcessed(), "Job with 'processing' state should not be processable")
 }

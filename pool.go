@@ -84,7 +84,7 @@ func Listen(ctx context.Context, workersNum int, log *log.Logger) (*Pool, error)
 
 // QueueJob adds a job to the waiting queue to be processed by a worker.
 func (p *Pool) QueueJob(j *Job) {
-	j.state = StateWaiting
+	j.setState(StateWaiting)
 
 	if p.stopped.Load() {
 		p.log.Info("jobs worker pool is stopped")
@@ -140,7 +140,7 @@ func (p *Pool) enqueueJob(j *Job) {
 
 // ScheduleJob adds a scheduled job to the pool.
 func (p *Pool) ScheduleJob(j *ScheduledJob) {
-	j.state = StateNew
+	j.setState(StateNew)
 
 	p.scheduledMu.Lock()
 	defer p.scheduledMu.Unlock()

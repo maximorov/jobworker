@@ -76,7 +76,7 @@ func TestPoolQueueJob_WhenStopped(t *testing.T) {
 	// This should not block since the pool is stopped
 	pool.QueueJob(job)
 
-	assert.Equal(t, StateWaiting, job.state)
+	assert.Equal(t, StateWaiting, job.getState())
 }
 
 // TestPoolScheduleJob tests scheduling a job.
@@ -93,7 +93,7 @@ func TestPoolScheduleJob(t *testing.T) {
 
 	pool.scheduledMu.RLock()
 	assert.Len(t, pool.scheduledJobs, 1)
-	assert.Equal(t, StateNew, scheduledJob.state)
+	assert.Equal(t, StateNew, scheduledJob.getState())
 	pool.scheduledMu.RUnlock()
 
 	assert.NoError(t, pool.Shutdown())

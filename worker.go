@@ -78,8 +78,8 @@ func (w *Worker) safePerformJob(ctx context.Context, job *Job) {
 }
 
 func (w *Worker) performJob(ctx context.Context, j *Job) (fmt.Stringer, error) {
-	j.state = StateProcessing
-	defer func() { j.state = StateProcessed }()
+	j.setState(StateProcessing)
+	defer j.setState(StateProcessed)
 
 	jCtx, cancel := context.WithTimeout(ctx, j.timeout)
 	defer func() { cancel() }()

@@ -68,7 +68,7 @@ func TestWorker_PerformJob_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, res)
 	assert.Equal(t, "success", res.String())
-	assert.Equal(t, StateProcessed, job.state)
+	assert.Equal(t, StateProcessed, job.getState())
 }
 
 // TestWorker_PerformJob_Error tests a job that returns an error.
@@ -88,7 +88,7 @@ func TestWorker_PerformJob_Error(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, jobErr, err)
 	assert.Nil(t, res)
-	assert.Equal(t, StateProcessed, job.state)
+	assert.Equal(t, StateProcessed, job.getState())
 }
 
 // TestWorker_PerformJob_Timeout tests a job that times out.
@@ -111,7 +111,7 @@ func TestWorker_PerformJob_Timeout(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Equal(t, context.DeadlineExceeded, err)
-	assert.Equal(t, StateProcessed, job.state)
+	assert.Equal(t, StateProcessed, job.getState())
 }
 
 // internalError implements InternalErrorHolder interface for testing
@@ -149,7 +149,7 @@ func TestWorker_PerformJob_InternalError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, res)
-	assert.Equal(t, StateProcessed, job.state)
+	assert.Equal(t, StateProcessed, job.getState())
 
 	iErr, ok := err.(InternalErrorHolder)
 	assert.True(t, ok, "Error should implement InternalErrorHolder")

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/atomic"
 )
 
 const defaultJobTimeout = time.Second * 10
@@ -21,7 +22,10 @@ const (
 
 // Job represents a unit of work to be executed by a worker.
 type Job struct {
-	state    jobState
+	// state is accessed concurrently by the scheduling goroutine
+	// (Pool.queueScheduledJobs -> couldBeProcessed) and worker goroutines
+	// (Worker.performJob), so it must be read/written atomically.
+	state    atomic.String
 	business Business
 	timeout  time.Duration
 	delay    time.Duration
@@ -34,9 +38,9 @@ type Business func(context.Context) (fmt.Stringer, error)
 // By default, it has a timeout of 10 seconds and a random name.
 func NewJob(b Business, opts ...JobOption) *Job {
 	j := &Job{
-		state:    StateNew,
 		business: b,
 	}
+	j.setState(StateNew)
 
 	for _, opt := range opts {
 		opt(j)
@@ -52,6 +56,11 @@ func NewJob(b Business, opts ...JobOption) *Job {
 	return j
 }
 
+func (j *Job) setState(s jobState) { j.state.Store(string(s)) }
+
+func (j *Job) getState() jobState { return jobState(j.state.Load()) }
+
 func (j *Job) couldBeProcessed() bool {
-	return j.state == StateNew || j.state == StateProcessed
+	s := j.getState()
+	return s == StateNew || s == StateProcessed
 }
