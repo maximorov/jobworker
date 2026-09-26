@@ -1,6 +1,12 @@
 # Jobworker
 
-This project implements a background job processing system in Go. It allows you to queue and process jobs asynchronously using a pool of workers.
+`github.com/maximorov/jobworker` is a small in-process background job runner for Go: a pool of
+workers, a queue, interval and cron schedules, and graceful shutdown. Jobs live in memory only;
+durable work belongs in your database (for example an outbox table polled by a scheduled job).
+
+```sh
+go get github.com/maximorov/jobworker@v1.8.0
+```
 
 ## Features
 
@@ -11,25 +17,42 @@ This project implements a background job processing system in Go. It allows you 
 *   **Graceful Shutdown:** The worker pool can be shut down gracefully, ensuring all jobs are completed.
 *   **Context-aware:** Jobs are processed with a context that can be used for cancellation.
 *   **Customizable Jobs:** Jobs can be customized with timeouts and names.
+*   **Structured logging:** The pool logs through the standard library `log/slog`.
 
 ## Usage
 
 ### Initialization
 
-First, create a new worker pool with the desired number of workers:
+Create a worker pool with the desired number of workers and a `*slog.Logger`
+(`nil` means `slog.Default()`):
 
 ```go
-pool, err := jobworker.Listen(context.Background(), 5, logger) // Creates a pool with 5 workers and starts it
+logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+pool, err := jobworker.Listen(context.Background(), 5, logger) // 5 workers, started
 if err != nil {
     panic(err)
 }
 ```
 
-Then, initialize the global pool:
+To use the package-level helpers (`QueueJob`, `QueueJobIf`, `After`), make the pool global:
 
 ```go
 pool.InitGlobalPool()
 ```
+
+### Logging
+
+Every record carries `component=jobworker`. Job records add these attributes:
+
+| Attribute | Value |
+|---|---|
+| `job` | job name (`JobWithName`, or a random UUID) |
+| `worker_id` | worker number, on panics |
+| `delay` | the `JobWithDelay` duration, on delayed jobs |
+| `result` | `String()` of the job result, on success |
+| `error` | error message (string), on failures and panics |
+| `internal` | `GetInternal().Error()` when the error implements `InternalErrorHolder` |
 
 ### Queueing a Job
 
@@ -40,10 +63,11 @@ job := jobworker.NewJob(func(ctx context.Context) (fmt.Stringer, error) {
     // Your job logic here
     return nil, nil
 })
-jobworker.QueueJob(job)
+pool.QueueJob(job)
 ```
 
-If you want to postpone execution, pass `JobWithDelay` with a `time.Duration`:
+With a global pool, `jobworker.QueueJob(job, opts...)` does the same and applies options.
+To postpone execution, pass `JobWithDelay`:
 
 ```go
 jobworker.QueueJob(job, jobworker.JobWithDelay(time.Minute))
@@ -51,32 +75,36 @@ jobworker.QueueJob(job, jobworker.JobWithDelay(time.Minute))
 
 ### Scheduled Jobs
 
-You can schedule jobs to run at a specific interval:
+Schedule a job to run at an interval:
 
 ```go
 scheduledJob := jobworker.NewScheduledJob(func(ctx context.Context) (fmt.Stringer, error) {
     // Your job logic here
     return nil, nil
-}, 5 * time.Minute) // Runs every 5 minutes
-jobworker.ScheduleJob(scheduledJob)
+}, 5*time.Minute, jobworker.JobWithName("cleanup"), jobworker.JobWithTimeout(time.Minute))
+pool.ScheduleJob(scheduledJob)
 ```
 
-Or using a cron expression:
+Or with a cron expression (minute, hour, day of month, month, day of week):
 
 ```go
 cronJob, err := jobworker.NewScheduledCronJob(func(ctx context.Context) (fmt.Stringer, error) {
     // Your job logic here
     return nil, nil
-}, "0 * * * *") // Runs at the beginning of every hour
+}, "0 * * * *") // at the beginning of every hour
 if err != nil {
     panic(err)
 }
-jobworker.ScheduleJob(cronJob)
+pool.ScheduleJob(cronJob)
 ```
+
+A scheduled job is not queued again while its previous run is still waiting or processing.
+Schedules run in every process that registers them; to run a schedule once per cluster, guard
+the job body with a database lock (for example `pg_try_advisory_lock`) in your application.
 
 ### Conditional Jobs with `After`
 
-You can queue jobs that will only be executed if a certain condition is met. This is useful for scenarios like running jobs after a database transaction successfully commits.
+You can queue jobs that will only be executed if a certain condition is met (global pool only):
 
 ```go
 after := jobworker.NewAfter()
@@ -86,22 +114,20 @@ after.Queue(func(ctx context.Context) (fmt.Stringer, error) {
     return nil, nil
 })
 
-// In a real scenario, you would call Notify based on the outcome of an operation.
-// For example, after a database transaction.
 var txErr error
-// ... perform transaction ...
+// run the database transaction and keep its error in txErr
 after.Notify(txErr) // If txErr is nil, the queued jobs will be executed.
 ```
 
 ### Graceful Shutdown
 
-To shut down the worker pool gracefully, call the `Shutdown` method:
-
 ```go
-pool.Shutdown()
+if err := pool.Shutdown(); err != nil {
+    return err
+}
 ```
 
-This will wait for all workers to finish their current jobs before exiting.
+`Shutdown` stops accepting jobs and waits for every worker to finish its current job.
 
 ## Components
 
@@ -124,3 +150,7 @@ A `ScheduledJob` is a job that is scheduled to run at a later time. It can be sc
 ### `After`
 
 The `After` struct provides a way to queue jobs that are conditional on the successful completion of another operation. It holds a set of jobs and only queues them to the worker pool when its `Notify` method is called with a `nil` error.
+
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md).
