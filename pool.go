@@ -2,7 +2,6 @@ package jobworker
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -23,6 +22,9 @@ type Pool struct {
 	scheduledMu    sync.RWMutex
 	shutdownOnce   sync.Once
 	shutdownCh     chan struct{}
+	// sendMu makes "check stopped, then send on waitingJobs" atomic with respect to
+	// Shutdown closing waitingJobs: senders hold the read lock, Shutdown the write lock.
+	sendMu sync.RWMutex
 
 	log *slog.Logger
 
@@ -122,25 +124,21 @@ func (p *Pool) enqueueJobAfterDelay(j *Job) {
 func (p *Pool) enqueueJob(j *Job) {
 	p.log.Debug("job is queued", "job", j.name)
 
-	defer func() {
-		if r := recover(); r != nil {
-			var err error
-			switch t := r.(type) {
-			case error:
-				err = t
-			default:
-				err = fmt.Errorf("%v", t)
-			}
-			p.log.Error("job queueing failed", "job", j.name, "error", err.Error())
-		}
-	}()
+	p.sendMu.RLock()
+	defer p.sendMu.RUnlock()
 
 	if p.stopped.Load() {
 		p.log.Info("jobs worker pool is stopped")
 		return
 	}
 
-	p.waitingJobs <- j
+	select {
+	case p.waitingJobs <- j:
+	case <-p.shutdownCh:
+		// Shutdown started while the queue was full: the job is dropped, as any job
+		// queued after Shutdown is.
+		p.log.Info("jobs worker pool is stopped", "job", j.name)
+	}
 }
 
 // ScheduleJob adds a scheduled job to the pool.
@@ -168,11 +166,16 @@ func (p *Pool) queueScheduledJobs() {
 }
 
 // Shutdown gracefully stops the worker pool, waiting for all workers to finish their current jobs.
+// Jobs already in the queue are still processed; jobs queued after Shutdown starts are dropped.
 func (p *Pool) Shutdown() error {
 	p.shutdownOnce.Do(func() {
 		p.stopped.Store(true)
+		// Stops the scheduler loop and unblocks senders waiting on a full queue.
 		close(p.shutdownCh)
+		// Waits for in-flight sends; afterwards no goroutine can send on waitingJobs.
+		p.sendMu.Lock()
 		close(p.waitingJobs)
+		p.sendMu.Unlock()
 
 		// waiting for workers are finished
 		for i := 0; i < len(p.workers); i++ {

@@ -23,3 +23,9 @@ First release whose `go.mod` declares `github.com/maximorov/jobworker`. Earlier 
 - The dependency on `github.com/Cery-Tech/log/v2` and, with it, on `getsentry/sentry-go`.
 
 Every other exported identifier keeps its signature.
+
+### Fixed
+
+- `Pool.Shutdown` no longer races concurrent `QueueJob` calls: the queue is closed only after
+  in-flight sends finish, and a sender blocked on a full queue gives up when shutdown starts
+  (previously a send on the closed channel panicked and was logged as "job queueing failed").

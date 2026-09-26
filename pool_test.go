@@ -270,3 +270,44 @@ func TestPool_ShutdownWaitsForRunningJob(t *testing.T) {
 		t.Fatal("Shutdown returned before the running job finished")
 	}
 }
+
+// TestPool_ShutdownConcurrentWithQueueJob hammers QueueJob from several goroutines while
+// Shutdown runs. Before the fix, `go test -race` reports a data race between close(waitingJobs)
+// and a send, and a send on the closed channel logs "job queueing failed".
+func TestPool_ShutdownConcurrentWithQueueJob(t *testing.T) {
+	noop := func(context.Context) (fmt.Stringer, error) { return nil, nil }
+
+	for round := 0; round < 50; round++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		logs := &lockedBuffer{}
+		logger := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+		p, err := Listen(ctx, 2, logger)
+		require.NoError(t, err)
+
+		stop := make(chan struct{})
+		var wg sync.WaitGroup
+		for g := 0; g < 4; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+						p.QueueJob(NewJob(noop))
+					}
+				}
+			}()
+		}
+
+		time.Sleep(2 * time.Millisecond)
+		require.NoError(t, p.Shutdown())
+		close(stop)
+		wg.Wait()
+		cancel()
+
+		require.NotContains(t, logs.String(), "job queueing failed", "round %d", round)
+	}
+}
