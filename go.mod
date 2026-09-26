@@ -1,4 +1,4 @@
-module github.com/Cery-Tech/jobworker
+module github.com/maximorov/jobworker
 
 go 1.24.3
 
