@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -349,4 +350,67 @@ func TestPool_ShutdownWithSenderBlockedOnFullQueue(t *testing.T) {
 		t.Fatal("Shutdown deadlocked with a sender blocked on the full queue")
 	}
 	<-sent
+}
+
+// shutdownOnDropHandler calls Shutdown of its pool from inside every "jobs worker pool is
+// stopped" record, i.e. it calls back into the pool while the pool is logging.
+type shutdownOnDropHandler struct {
+	pool atomic.Pointer[Pool]
+}
+
+func (h *shutdownOnDropHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *shutdownOnDropHandler) Handle(_ context.Context, r slog.Record) error {
+	if p := h.pool.Load(); p != nil && r.Message == "jobs worker pool is stopped" {
+		_ = p.Shutdown()
+	}
+	return nil
+}
+
+func (h *shutdownOnDropHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *shutdownOnDropHandler) WithGroup(string) slog.Handler { return h }
+
+// TestPool_ShutdownWhenLoggerCallsBackIntoPool checks that a sender does not call the logger
+// while it holds the read lock of sendMu. Otherwise a handler that calls back into the pool
+// (here: Shutdown, which waits for the Shutdown already running) waits for that Shutdown, and
+// that Shutdown waits for the handler's read lock.
+func TestPool_ShutdownWhenLoggerCallsBackIntoPool(t *testing.T) {
+	noop := func(context.Context) (fmt.Stringer, error) { return nil, nil }
+
+	h := &shutdownOnDropHandler{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p, err := Listen(ctx, 2, slog.New(h))
+	require.NoError(t, err)
+	h.pool.Store(p)
+
+	cancel()
+	time.Sleep(20 * time.Millisecond) // the workers leave their loop and stop draining the queue
+
+	for i := 0; i < queueSize; i++ {
+		p.QueueJob(NewJob(noop))
+	}
+	sent := make(chan struct{})
+	go func() {
+		p.QueueJob(NewJob(noop)) // blocks on the full queue, then logs that the job is dropped
+		close(sent)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		_ = p.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown deadlocked with a logger that calls back into the pool")
+	}
+	select {
+	case <-sent:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the dropped sender never returned")
+	}
 }

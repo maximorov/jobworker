@@ -124,20 +124,29 @@ func (p *Pool) enqueueJobAfterDelay(j *Job) {
 func (p *Pool) enqueueJob(j *Job) {
 	p.log.Debug("job is queued", "job", j.name)
 
+	if !p.send(j) {
+		p.log.Info("jobs worker pool is stopped", "job", j.name)
+	}
+}
+
+// send puts j on waitingJobs and reports whether it did. It returns false when the pool is
+// stopped, or when Shutdown starts while the queue is full: the job is then dropped, as any
+// job queued after Shutdown is. send holds the read lock of sendMu, so it must not call the
+// logger or any other caller-supplied code: code that calls back into the pool could wait for
+// Shutdown, which waits for this read lock.
+func (p *Pool) send(j *Job) bool {
 	p.sendMu.RLock()
 	defer p.sendMu.RUnlock()
 
 	if p.stopped.Load() {
-		p.log.Info("jobs worker pool is stopped")
-		return
+		return false
 	}
 
 	select {
 	case p.waitingJobs <- j:
+		return true
 	case <-p.shutdownCh:
-		// Shutdown started while the queue was full: the job is dropped, as any job
-		// queued after Shutdown is.
-		p.log.Info("jobs worker pool is stopped", "job", j.name)
+		return false
 	}
 }
 
