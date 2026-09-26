@@ -1,20 +1,25 @@
 package jobworker
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/Cery-Tech/log/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestListen tests the creation of a new Pool.
 func TestListen(t *testing.T) {
 	numWorkers := 5
-	pool, err := Listen(context.Background(), numWorkers, log.New())
+	pool, err := Listen(context.Background(), numWorkers, discardLogger())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
@@ -29,7 +34,7 @@ func TestListen(t *testing.T) {
 
 // TestPoolListenAndShutdown tests the lifecycle of the pool.
 func TestPoolListenAndShutdown(t *testing.T) {
-	pool, err := Listen(context.Background(), 2, log.New())
+	pool, err := Listen(context.Background(), 2, discardLogger())
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
 	assert.NoError(t, pool.Shutdown())
@@ -38,7 +43,7 @@ func TestPoolListenAndShutdown(t *testing.T) {
 // TestPoolQueueJob tests queuing a job to the pool.
 func TestPoolQueueJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	pool, err := Listen(ctx, 1, log.New())
+	pool, err := Listen(ctx, 1, discardLogger())
 	defer cancel()
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
@@ -63,7 +68,7 @@ func TestPoolQueueJob(t *testing.T) {
 
 // TestPoolQueueJob_WhenStopped tests that jobs are not queued when pool is stopped.
 func TestPoolQueueJob_WhenStopped(t *testing.T) {
-	pool, err := Listen(context.Background(), 1, log.New())
+	pool, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
 
@@ -81,7 +86,7 @@ func TestPoolQueueJob_WhenStopped(t *testing.T) {
 
 // TestPoolScheduleJob tests scheduling a job.
 func TestPoolScheduleJob(t *testing.T) {
-	pool, err := Listen(context.Background(), 1, log.New())
+	pool, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	assert.NotNil(t, pool)
 
@@ -101,7 +106,7 @@ func TestPoolScheduleJob(t *testing.T) {
 
 // TestPoolInitGlobalPool tests setting the pool as global.
 func TestPoolInitGlobalPool(t *testing.T) {
-	p, err := Listen(context.Background(), 1, log.New())
+	p, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	p.InitGlobalPool()
 
@@ -114,7 +119,7 @@ func TestPoolInitGlobalPool(t *testing.T) {
 func TestPoolMultipleWorkers(t *testing.T) {
 	numWorkers := 3
 	ctx, cancel := context.WithCancel(context.Background())
-	p, err := Listen(ctx, numWorkers, log.New())
+	p, err := Listen(ctx, numWorkers, discardLogger())
 	defer cancel()
 	assert.NoError(t, err)
 	assert.NotNil(t, p)
@@ -151,4 +156,117 @@ func TestPoolMultipleWorkers(t *testing.T) {
 	}
 
 	_ = p.Shutdown()
+}
+
+// discardLogger returns a logger that drops every record.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
+// lockedBuffer is an io.Writer that is safe to read while workers write to it.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// jsonLogger returns a debug-level JSON logger writing into buf.
+func jsonLogger(buf *lockedBuffer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+// waitForRecord waits until buf holds a JSON record with the given message and returns it.
+func waitForRecord(t *testing.T, buf *lockedBuffer, msg string) map[string]any {
+	t.Helper()
+	var found map[string]any
+	require.Eventually(t, func() bool {
+		for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+			var rec map[string]any
+			if json.Unmarshal([]byte(line), &rec) == nil && rec["msg"] == msg {
+				found = rec
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond, "no %q record in:\n%s", msg, buf.String())
+	return found
+}
+
+// TestListen_NilLoggerUsesSlogDefault tests that a nil logger falls back to slog.Default().
+func TestListen_NilLoggerUsesSlogDefault(t *testing.T) {
+	var buf lockedBuffer
+	// slog.SetDefault also redirects the standard log package (output and
+	// flags), and restoring the previous slog logger does not undo that, so
+	// restore all three.
+	previous, previousOutput, previousFlags := slog.Default(), log.Writer(), log.Flags()
+	slog.SetDefault(jsonLogger(&buf))
+	t.Cleanup(func() {
+		slog.SetDefault(previous)
+		log.SetOutput(previousOutput)
+		log.SetFlags(previousFlags)
+	})
+
+	p, err := Listen(context.Background(), 1, nil)
+	require.NoError(t, err)
+	require.NoError(t, p.Shutdown())
+
+	rec := waitForRecord(t, &buf, "pool is listening")
+	assert.Equal(t, "jobworker", rec["component"])
+}
+
+// TestPool_LogsDelayedJobs tests the job and delay attributes of the delay log.
+func TestPool_LogsDelayedJobs(t *testing.T) {
+	var buf lockedBuffer
+	p, err := Listen(context.Background(), 1, jsonLogger(&buf))
+	require.NoError(t, err)
+	defer func() { _ = p.Shutdown() }()
+
+	p.QueueJob(NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		return nil, nil
+	}, JobWithName("delayed-job"), JobWithDelay(time.Hour)))
+
+	rec := waitForRecord(t, &buf, "job is delayed")
+	assert.Equal(t, "jobworker", rec["component"])
+	assert.Equal(t, "delayed-job", rec["job"])
+	assert.Equal(t, float64(time.Hour), rec["delay"])
+}
+
+// TestPool_ShutdownWaitsForRunningJob tests graceful shutdown: Shutdown returns
+// only after the job that a worker is running has finished.
+func TestPool_ShutdownWaitsForRunningJob(t *testing.T) {
+	p, err := Listen(context.Background(), 1, discardLogger())
+	require.NoError(t, err)
+
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	p.QueueJob(NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		close(started)
+		time.Sleep(200 * time.Millisecond)
+		close(finished)
+		return nil, nil
+	}, JobWithName("slow")))
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the job never started")
+	}
+	require.NoError(t, p.Shutdown())
+
+	select {
+	case <-finished:
+	default:
+		t.Fatal("Shutdown returned before the running job finished")
+	}
 }

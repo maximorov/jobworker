@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Cery-Tech/log/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type SuccessResponse struct {
@@ -21,7 +21,7 @@ func (r SuccessResponse) String() string {
 
 // TestWorker_Listen tests the worker's ability to receive and process a job.
 func TestWorker_Listen(t *testing.T) {
-	p, err := Listen(context.Background(), 1, log.New())
+	p, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	defer p.Shutdown()
 
@@ -54,7 +54,7 @@ func TestWorker_Listen(t *testing.T) {
 
 // TestWorker_PerformJob_Success tests the successful performance of a job.
 func TestWorker_PerformJob_Success(t *testing.T) {
-	p, err := Listen(context.Background(), 1, log.New())
+	p, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	defer p.Shutdown()
 
@@ -73,7 +73,7 @@ func TestWorker_PerformJob_Success(t *testing.T) {
 
 // TestWorker_PerformJob_Error tests a job that returns an error.
 func TestWorker_PerformJob_Error(t *testing.T) {
-	p, err := Listen(context.Background(), 1, log.New())
+	p, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	defer p.Shutdown()
 
@@ -93,7 +93,7 @@ func TestWorker_PerformJob_Error(t *testing.T) {
 
 // TestWorker_PerformJob_Timeout tests a job that times out.
 func TestWorker_PerformJob_Timeout(t *testing.T) {
-	p, err := Listen(context.Background(), 1, log.New())
+	p, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	defer p.Shutdown()
 
@@ -130,7 +130,7 @@ func (e *internalError) GetInternal() error {
 
 // TestWorker_PerformJob_InternalError tests a job that returns an error with internal error.
 func TestWorker_PerformJob_InternalError(t *testing.T) {
-	p, err := Listen(context.Background(), 1, log.New())
+	p, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	defer p.Shutdown()
 
@@ -158,7 +158,7 @@ func TestWorker_PerformJob_InternalError(t *testing.T) {
 
 // TestWorker_Listen_ContextCancel tests that worker stops when context is canceled.
 func TestWorker_Listen_ContextCancel(t *testing.T) {
-	p, err := Listen(context.Background(), 1, log.New())
+	p, err := Listen(context.Background(), 1, discardLogger())
 	assert.NoError(t, err)
 	defer p.Shutdown()
 
@@ -177,4 +177,57 @@ func TestWorker_Listen_ContextCancel(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Worker did not finish after context cancel")
 	}
+}
+
+// TestWorker_LogsResult tests the result attribute of a successful job.
+func TestWorker_LogsResult(t *testing.T) {
+	var buf lockedBuffer
+	p, err := Listen(context.Background(), 1, jsonLogger(&buf))
+	require.NoError(t, err)
+	defer func() { _ = p.Shutdown() }()
+
+	p.QueueJob(NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		return SuccessResponse{}, nil
+	}, JobWithName("report")))
+
+	rec := waitForRecord(t, &buf, "job completed successfully")
+	assert.Equal(t, "jobworker", rec["component"])
+	assert.Equal(t, "report", rec["job"])
+	assert.Equal(t, "success", rec["result"])
+}
+
+// TestWorker_LogsErrorAndInternalAsStrings tests the error and internal attributes of a failed job.
+func TestWorker_LogsErrorAndInternalAsStrings(t *testing.T) {
+	var buf lockedBuffer
+	p, err := Listen(context.Background(), 1, jsonLogger(&buf))
+	require.NoError(t, err)
+	defer func() { _ = p.Shutdown() }()
+
+	p.QueueJob(NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		return nil, &internalError{msg: "job failed", internal: errors.New("database connection failed")}
+	}, JobWithName("sync")))
+
+	rec := waitForRecord(t, &buf, "job failed")
+	assert.Equal(t, "jobworker", rec["component"])
+	assert.Equal(t, "sync", rec["job"])
+	assert.Equal(t, "job failed", rec["error"])
+	assert.Equal(t, "database connection failed", rec["internal"])
+}
+
+// TestWorker_LogsPanicsWithWorkerID tests the worker_id and error attributes of a panicking job.
+func TestWorker_LogsPanicsWithWorkerID(t *testing.T) {
+	var buf lockedBuffer
+	p, err := Listen(context.Background(), 1, jsonLogger(&buf))
+	require.NoError(t, err)
+	defer func() { _ = p.Shutdown() }()
+
+	p.QueueJob(NewJob(func(ctx context.Context) (fmt.Stringer, error) {
+		panic("boom")
+	}, JobWithName("explode")))
+
+	rec := waitForRecord(t, &buf, "job panicked")
+	assert.Equal(t, "jobworker", rec["component"])
+	assert.Equal(t, "explode", rec["job"])
+	assert.Equal(t, float64(1), rec["worker_id"])
+	assert.Equal(t, "boom", rec["error"])
 }

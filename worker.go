@@ -3,8 +3,6 @@ package jobworker
 import (
 	"context"
 	"fmt"
-
-	"github.com/Cery-Tech/log/v2"
 )
 
 // InternalErrorHolder is an interface for errors that contain an internal error.
@@ -20,7 +18,6 @@ type Worker struct {
 
 // NewWorker creates a new worker.
 func NewWorker(id int, pool *Pool) Worker {
-	//res.waitingJobs, res.workerFinished
 	return Worker{
 		id:   id,
 		pool: pool,
@@ -58,22 +55,23 @@ func (w *Worker) safePerformJob(ctx context.Context, job *Job) {
 			default:
 				err = fmt.Errorf("%v", t)
 			}
-			w.pool.log.Error("job panicked", err, log.Int("worker_id", w.id), log.String("job", job.name), log.Any("panic", r))
+			w.pool.log.Error("job panicked", "worker_id", w.id, "job", job.name, "error", err.Error())
 		}
 	}()
 
-	if res, err := w.performJob(ctx, job); err != nil {
+	res, err := w.performJob(ctx, job)
+	if err != nil {
 		if iErr, ok := err.(InternalErrorHolder); ok && iErr.GetInternal() != nil {
-			w.pool.log.Error("job failed", err, log.String("job", job.name), log.String("internal", iErr.GetInternal().Error()))
+			w.pool.log.Error("job failed", "job", job.name, "error", err.Error(), "internal", iErr.GetInternal().Error())
 		} else {
-			w.pool.log.Error("job failed", err, log.String("job", job.name))
+			w.pool.log.Error("job failed", "job", job.name, "error", err.Error())
 		}
+		return
+	}
+	if res != nil {
+		w.pool.log.Info("job completed successfully", "job", job.name, "result", res.String())
 	} else {
-		if res != nil {
-			w.pool.log.Info("job completed successfully", log.String("job", job.name), log.Stringer("result", res))
-		} else {
-			w.pool.log.Info("job completed successfully", log.String("job", job.name))
-		}
+		w.pool.log.Info("job completed successfully", "job", job.name)
 	}
 }
 
@@ -84,7 +82,7 @@ func (w *Worker) performJob(ctx context.Context, j *Job) (fmt.Stringer, error) {
 	jCtx, cancel := context.WithTimeout(ctx, j.timeout)
 	defer func() { cancel() }()
 
-	w.pool.log.Debug("job is performing", log.String("job", j.name))
+	w.pool.log.Debug("job is performing", "job", j.name)
 
 	return j.business(jCtx)
 }

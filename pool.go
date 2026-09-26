@@ -3,10 +3,10 @@ package jobworker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/Cery-Tech/log/v2"
 	"go.uber.org/atomic"
 )
 
@@ -24,20 +24,25 @@ type Pool struct {
 	shutdownOnce   sync.Once
 	shutdownCh     chan struct{}
 
-	log *log.Logger
+	log *slog.Logger
 
 	stopped *atomic.Bool
 }
 
 // newPool creates a new worker pool with the specified number of workers.
-func newPool(ctx context.Context, workersNum int, logger *log.Logger) *Pool {
+// A nil logger means slog.Default().
+func newPool(ctx context.Context, workersNum int, logger *slog.Logger) *Pool {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	res := &Pool{
 		ctx:            ctx,
 		workers:        make([]Worker, workersNum),
 		waitingJobs:    make(chan *Job, queueSize),
 		workerFinished: make(chan struct{}),
 		shutdownCh:     make(chan struct{}),
-		log:            logger.With(log.String("cat", "Job Worker")),
+		log:            logger.With("component", "jobworker"),
 		stopped:        atomic.NewBool(false),
 	}
 
@@ -53,9 +58,9 @@ func (p *Pool) InitGlobalPool() {
 	pool = p
 }
 
-// Listen creates and starts a worker pool.
-func Listen(ctx context.Context, workersNum int, log *log.Logger) (*Pool, error) {
-	p := newPool(ctx, workersNum, log)
+// Listen creates and starts a worker pool. A nil logger means slog.Default().
+func Listen(ctx context.Context, workersNum int, logger *slog.Logger) (*Pool, error) {
+	p := newPool(ctx, workersNum, logger)
 
 	for i := range p.workers {
 		go p.workers[i].Listen(p.ctx)
@@ -92,7 +97,7 @@ func (p *Pool) QueueJob(j *Job) {
 	}
 
 	if j.delay > 0 {
-		p.log.Debug("job is delayed", log.String("job", j.name), log.Duration("delay", j.delay))
+		p.log.Debug("job is delayed", "job", j.name, "delay", j.delay)
 		go p.enqueueJobAfterDelay(j)
 		return
 	}
@@ -115,7 +120,7 @@ func (p *Pool) enqueueJobAfterDelay(j *Job) {
 }
 
 func (p *Pool) enqueueJob(j *Job) {
-	p.log.Debug("job is queued", log.String("job", j.name))
+	p.log.Debug("job is queued", "job", j.name)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -126,7 +131,7 @@ func (p *Pool) enqueueJob(j *Job) {
 			default:
 				err = fmt.Errorf("%v", t)
 			}
-			p.log.Error("job queueing failed", err, log.String("job", j.name), log.Any("panic", r))
+			p.log.Error("job queueing failed", "job", j.name, "error", err.Error())
 		}
 	}()
 
