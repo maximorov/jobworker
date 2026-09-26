@@ -311,3 +311,42 @@ func TestPool_ShutdownConcurrentWithQueueJob(t *testing.T) {
 		require.NotContains(t, logs.String(), "job queueing failed", "round %d", round)
 	}
 }
+
+// TestPool_ShutdownWithSenderBlockedOnFullQueue covers the shutdown order of an application:
+// its context is cancelled first, so the workers stop draining the queue, and Shutdown runs
+// while a sender (a QueueJob caller or the scheduler tick) is blocked on the full queue. The
+// sender must give up when shutdown starts; otherwise it keeps the read lock of sendMu and
+// Shutdown waits for the write lock forever.
+func TestPool_ShutdownWithSenderBlockedOnFullQueue(t *testing.T) {
+	noop := func(context.Context) (fmt.Stringer, error) { return nil, nil }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p, err := Listen(ctx, 2, discardLogger())
+	require.NoError(t, err)
+
+	cancel()
+	time.Sleep(20 * time.Millisecond) // the workers leave their loop and stop draining the queue
+
+	for i := 0; i < queueSize; i++ {
+		p.QueueJob(NewJob(noop))
+	}
+	sent := make(chan struct{})
+	go func() {
+		p.QueueJob(NewJob(noop)) // blocks: the queue is full and nobody drains it
+		close(sent)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		_ = p.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown deadlocked with a sender blocked on the full queue")
+	}
+	<-sent
+}
